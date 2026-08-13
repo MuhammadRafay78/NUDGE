@@ -737,20 +737,6 @@ function cardFor(item) {
   });
   acts.appendChild(board);
 
-  /* the whole document history for this client, without leaving the panel */
-  if (item.cardId) {
-    const hist = document.createElement('button');
-    hist.className = 'btn';
-    const open = LEDGER_OPEN === item.cardId;
-    hist.textContent = open ? 'Hide history' : 'History';
-    hist.addEventListener('click', () => {
-      LEDGER_OPEN = open ? null : item.cardId;
-      draw();
-      if (!open) loadLedger(item).catch(() => {});
-    });
-    acts.appendChild(hist);
-  }
-
   const done = document.createElement('button');
   done.className = 'btn';
   done.textContent = item.isNew ? 'Done' : 'Bring back';
