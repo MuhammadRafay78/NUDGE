@@ -59,8 +59,9 @@ function addCard(code, patch) {
   const card = {
     id: crypto.randomUUID(),
     title: (patch.title || '').slice(0, 200) || 'Untitled',
-    body: (patch.body || '').slice(0, 2000),
+    body: (patch.body || '').slice(0, 4000),
     url: patch.url || '',
+    context: (patch.context || '').slice(0, 200),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
     createdAt: now,
     updatedAt: now
@@ -121,7 +122,6 @@ app.post('/api/notify', async (req, res) => {
 
   try {
     await webpush.sendNotification(entry.subscription, JSON.stringify({ title: title, body: body, url: url }));
-    addCard(code, { title: title, body: body, url: url, column: 'inbox' });
     res.json({ ok: true });
   } catch (e) {
     if (e && (e.statusCode === 404 || e.statusCode === 410)) {

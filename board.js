@@ -10,15 +10,21 @@ function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
+
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Open &rarr;</a>' : '';
   const options = QA.BOARD_COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
+  const body = card.body || '';
+  const long = body.length > LONG_BODY;
   return (
     '<div class="item" data-id="' + esc(card.id) + '">' +
       '<div class="t">' + esc(card.title) + '</div>' +
-      (card.body ? '<div class="b">' + esc(card.body) + '</div>' : '') +
+      (card.context ? '<div class="ctx">' + esc(card.context) + '</div>' : '') +
+      (body ? '<div class="b clamp">' + esc(body) + '</div>' : '') +
+      (long ? '<button class="more">Show more</button>' : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
@@ -53,6 +59,12 @@ boardEl.addEventListener('change', async (e) => {
 });
 
 boardEl.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('more')) {
+    const b = e.target.previousElementSibling;
+    const collapsed = b.classList.toggle('clamp');
+    e.target.textContent = collapsed ? 'Show more' : 'Show less';
+    return;
+  }
   if (!e.target.classList.contains('del')) return;
   const id = e.target.closest('.item').dataset.id;
   try {

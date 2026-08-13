@@ -2670,15 +2670,29 @@ var QA = (function () {
     return data.cards || [];
   }
 
-  async function createCard(title, body, url, column) {
+  async function createCard(title, body, url, column, context) {
     const cx = await boardBase();
     if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
     const { data } = await boardApi('/api/cards', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: cx.code, title: title, body: body || '', url: url || '', column: column || 'inbox' })
+      body: JSON.stringify({
+        code: cx.code, title: title, body: body || '', url: url || '',
+        column: column || 'inbox', context: context || ''
+      })
     });
     return data.card;
+  }
+
+  /* Fire-and-forget board logging: a missing/misconfigured server should
+     never block the caller or throw, same spirit as pushToPhone. */
+  async function fileCard(title, body, url, context) {
+    try {
+      await createCard(title, body, url, 'inbox', context);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
   }
 
   async function moveCard(id, column) {
@@ -3879,7 +3893,7 @@ var QA = (function () {
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getPush, setPush, pushToPhone,
-    BOARD_COLUMNS, fetchCards, createCard, moveCard, deleteCard,
+    BOARD_COLUMNS, fetchCards, createCard, fileCard, moveCard, deleteCard,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

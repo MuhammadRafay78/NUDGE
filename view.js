@@ -704,6 +704,34 @@ function cardFor(item) {
     acts.appendChild(find);
   }
 
+  /* deliberately file this one on the Kanban board — independent of whether
+     it was ever pushed to a phone, and works on old/already-seen mentions too */
+  const board = document.createElement('button');
+  board.className = 'btn';
+  board.textContent = '+ Board';
+  board.title = 'Add this to the Kanban board (Settings > Mobile notifications)';
+  board.addEventListener('click', async () => {
+    board.disabled = true;
+    board.textContent = 'Adding…';
+    const res = await QA.fileCard((item.actor || 'Someone') + ' tagged you', item.text || '', item.href || '', item.cardName || '');
+    const note = card.querySelector('[data-role=boardnote]') || document.createElement('div');
+    note.dataset.role = 'boardnote';
+    card.appendChild(note);
+    if (res && res.ok) {
+      note.className = 'meta';
+      note.style.padding = '6px 4px 0';
+      note.textContent = '✓ Added to board';
+      board.textContent = 'Added ✓';
+      setTimeout(() => { board.textContent = '+ Board'; board.disabled = false; }, 1500);
+    } else {
+      note.className = 'err';
+      note.textContent = 'Could not add: ' + ((res && res.error) || 'unknown error');
+      board.textContent = '+ Board';
+      board.disabled = false;
+    }
+  });
+  acts.appendChild(board);
+
   /* the whole document history for this client, without leaving the panel */
   if (item.cardId) {
     const hist = document.createElement('button');
