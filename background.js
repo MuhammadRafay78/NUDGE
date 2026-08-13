@@ -71,6 +71,7 @@ function notifyOne(item) {
     priority: 2,
     requireInteraction: false
   });
+  QA.pushToPhone((item.actor || 'Someone') + ' tagged you', (item.text || '').slice(0, 200), item.href || '');
   return id;
 }
 
@@ -177,13 +178,15 @@ async function checkTrello(reason) {
 
   if (fresh.length > MAX_POPUPS) {
     const extra = fresh.length - MAX_POPUPS;
+    const moreTitle = extra + ' more ' + (extra === 1 ? 'tag' : 'tags') + ' waiting';
     chrome.notifications.create('more|' + now, {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-      title: extra + ' more ' + (extra === 1 ? 'tag' : 'tags') + ' waiting',
+      title: moreTitle,
       message: 'Open the extension to work through them.',
       priority: 1
     });
+    QA.pushToPhone(moreTitle, 'Open the extension to work through them.', '');
   }
 
   fresh.forEach((i) => { notified[i.hash] = now; });
@@ -520,17 +523,19 @@ async function prepareFollowup(reason) {
 function notifyFollowup(draft) {
   const n = (draft.entries || []).length;
   const missing = (draft.entries || []).filter((e) => (e.asks || []).length).length;
+  const message = n
+    ? n + ' meeting' + (n === 1 ? '' : 's') + ' next week — ' + missing +
+      ' card' + (missing === 1 ? '' : 's') + ' need a follow-up comment.'
+    : (draft.problem || 'Nothing found for next week.');
   chrome.notifications.create('followup|' + Date.now(), {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
     title: 'Follow-up draft ready',
-    message: n
-      ? n + ' meeting' + (n === 1 ? '' : 's') + ' next week — ' + missing +
-        ' card' + (missing === 1 ? '' : 's') + ' need a follow-up comment.'
-      : (draft.problem || 'Nothing found for next week.'),
+    message: message,
     contextMessage: 'Click to review before anything is sent',
     priority: 1
   });
+  QA.pushToPhone('Follow-up draft ready', message, '');
 }
 
 chrome.notifications.onClicked.addListener((id) => {
@@ -627,6 +632,11 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     });
   }
   if (msg.type === 'checkNow') { checkTrello('asked').then((r) => respond && respond(r)); return true; }
+  if (msg.type === 'testPush') {
+    QA.pushToPhone('Nudge', 'Test notification — your phone is paired correctly.', '')
+      .then((r) => respond && respond(r));
+    return true;
+  }
   if (msg.type === 'handled' && msg.hash) {
     /* you dealt with it in the panel, so it must never pop on the desktop */
     (async () => {

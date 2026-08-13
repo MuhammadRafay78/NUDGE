@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nudge — Mobile notifications</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nudge">
+<meta name="theme-color" content="#0b0d10">
+<style>
+  :root {
+    --bg: #ffffff; --card: #f4f4f5; --fg: #18181b; --muted: #71717a;
+    --line: #e4e4e7; --accent: #c2410c; --accent-soft: #fff7ed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b0d10; --card: #18181b; --fg: #f4f4f5; --muted: #a1a1aa;
+             --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: max(24px, env(safe-area-inset-top)) 20px 40px;
+    display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 420px; }
+  h1 { font-size: 21px; margin: 4px 0 2px; }
+  p.lede { color: var(--muted); margin: 0 0 22px; font-size: 13.5px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .code {
+    font: 700 30px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .08em; color: var(--accent); text-align: center;
+    padding: 18px 8px; background: var(--accent-soft); border-radius: 10px;
+    margin: 10px 0; word-break: break-all;
+  }
+  button {
+    width: 100%; font: inherit; font-weight: 650; padding: 12px 14px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+    cursor: pointer; margin-top: 8px;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 10px; min-height: 1.4em; }
+  .status.err { color: var(--accent); }
+  .steps { padding-left: 18px; margin: 8px 0 0; color: var(--muted); font-size: 13.5px; }
+  .steps li { margin-bottom: 4px; }
+  code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .hide { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nudge — mobile notifications</h1>
+  <p class="lede">Pair this phone once, then paste the code into the extension's Options → Mobile notifications.</p>
+
+  <div class="card" id="installCard">
+    <b>1. Add this page to your Home Screen first</b>
+    <p class="status" style="margin-top:6px">iOS only delivers push notifications to installed web apps, not to a Safari tab.</p>
+    <ol class="steps">
+      <li>Tap the Share icon in Safari's toolbar</li>
+      <li>Choose <b>Add to Home Screen</b></li>
+      <li>Open Nudge from your Home Screen (not Safari) and come back to this step</li>
+    </ol>
+  </div>
+
+  <div class="card hide" id="pairCard">
+    <b>2. Turn on notifications</b>
+    <p class="status" id="pairLede" style="margin-top:6px">Tap below and allow notifications when iOS asks.</p>
+    <button class="primary" id="enableBtn">Enable notifications</button>
+    <div class="status" id="enableStatus"></div>
+  </div>
+
+  <div class="card hide" id="codeCard">
+    <b>3. Paste this code into the extension</b>
+    <div class="code" id="codeVal">…</div>
+    <p class="status">Extension → Settings → Mobile notifications → Pairing code.</p>
+    <button id="testBtn">Send a test notification</button>
+    <button id="unpairBtn">Unpair this phone</button>
+    <div class="status" id="codeStatus"></div>
+  </div>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

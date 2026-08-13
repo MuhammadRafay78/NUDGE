@@ -294,6 +294,37 @@ document.getElementById('notifyNow').addEventListener('click', () => {
   });
 });
 
+/* ---------- mobile notifications (Web Push relay) ---------- */
+
+const pOn = document.getElementById('pushOn');
+const pUrl = document.getElementById('pushUrl');
+const pCode = document.getElementById('pushCode');
+const pState = document.getElementById('pushState');
+
+QA.getPush().then((cfg) => {
+  pOn.checked = !!cfg.on;
+  pUrl.value = cfg.serverUrl || '';
+  pCode.value = cfg.code || '';
+});
+
+pOn.addEventListener('change', async () => { await QA.setPush({ on: pOn.checked }); flash('Saved.'); });
+pUrl.addEventListener('change', async () => { await QA.setPush({ serverUrl: pUrl.value.trim() }); flash('Saved.'); });
+pCode.addEventListener('change', async () => {
+  await QA.setPush({ code: pCode.value.trim().toUpperCase() });
+  pCode.value = pCode.value.trim().toUpperCase();
+  flash('Saved.');
+});
+
+document.getElementById('pushTest').addEventListener('click', () => {
+  pState.textContent = ' Sending…';
+  tell({ type: 'testPush' }, (r) => {
+    if (!r) { pState.textContent = ' No answer from the extension.'; return; }
+    if (r.skipped) pState.textContent = ' Fill in the server address and pairing code first, and turn this on.';
+    else if (r.ok) pState.textContent = ' Sent — check your phone.';
+    else pState.textContent = ' Failed: ' + (r.error || 'unknown error');
+  });
+});
+
 /* ---------- sorting mentions into buckets ----------
    Off unless he switches it on. The key lives in chrome.storage.local, which is
    never synced to his Google account, and goes nowhere but Google's API. */

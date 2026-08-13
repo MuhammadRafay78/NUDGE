@@ -1,0 +1,13 @@
+{
+  "name": "Nudge",
+  "short_name": "Nudge",
+  "description": "Receives Trello tag notifications relayed from the Nudge browser extension.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0d10",
+  "theme_color": "#0b0d10",
+  "icons": [
+    { "src": "/icons/icon.png", "sizes": "128x128", "type": "image/png" }
+  ]
+}
