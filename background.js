@@ -158,7 +158,23 @@ async function readNotifications() {
 }
 
 /* the heart of it: ask Trello what's new, pop anything we haven't popped before */
-async function checkTrello(reason) {
+/* checkTrello can be triggered from several places at once (the 1-minute
+   alarm, a Trello tab finishing a load, a content-script ping) and now does
+   real network round-trips per fresh tag (push + board filing), which take
+   long enough that two triggers can genuinely overlap. Without this guard,
+   an overlapping call re-reads "notified" from storage before the first
+   call has finished writing it back, sees the same tags as still fresh, and
+   double-files them on the board. Single-flight: a call that arrives while
+   one is already running just waits for and reuses that same result. */
+let checkInFlight = null;
+
+function checkTrello(reason) {
+  if (checkInFlight) return checkInFlight;
+  checkInFlight = runCheckTrello(reason).finally(() => { checkInFlight = null; });
+  return checkInFlight;
+}
+
+async function runCheckTrello(reason) {
   const cfg = await getNotify();
   if (!cfg.on) return { skipped: 'off' };
 
@@ -187,6 +203,16 @@ async function checkTrello(reason) {
     return { popped: 0, reason: reason };
   }
 
+  /* mark these handled and persist BEFORE the slow per-item network work,
+     so a same-second overlapping call sees them as already spoken for */
+  fresh.forEach((i) => { notified[i.hash] = now; });
+  const keys = Object.keys(notified);
+  if (keys.length > 600) {
+    keys.sort((a, b) => notified[a] - notified[b]).slice(0, keys.length - 600)
+      .forEach((k) => delete notified[k]);
+  }
+  await chrome.storage.local.set({ notified: notified });
+
   for (const item of fresh.slice(0, MAX_POPUPS)) {
     const id = await notifyOne(item);
     pending[id] = { url: item.href, shortLink: item.shortLink || '', hash: item.hash, actor: item.actor, card: item.cardName };
@@ -208,16 +234,7 @@ async function checkTrello(reason) {
     for (const item of fresh.slice(MAX_POPUPS)) { await fileTagCard(item); }
   }
 
-  fresh.forEach((i) => { notified[i.hash] = now; });
-
-  // keep the "already told you" list from growing forever
-  const keys = Object.keys(notified);
-  if (keys.length > 600) {
-    keys.sort((a, b) => notified[a] - notified[b]).slice(0, keys.length - 600)
-      .forEach((k) => delete notified[k]);
-  }
-
-  await chrome.storage.local.set({ notified: notified, pending: pending });
+  await chrome.storage.local.set({ pending: pending });
   if (tab) { try { await updateBadge(tab.id, tab.url); } catch (e) {} }
   tell({ type: 'trelloUpdated' });   // live-update an open panel, if one is open
   return { popped: Math.min(fresh.length, MAX_POPUPS), total: fresh.length, reason: reason, how: read.how };
