@@ -59,7 +59,11 @@ async function mentionNames() {
   return (r && r.names && r.names.length) ? r.names : QA.ME;
 }
 
-function notifyOne(item) {
+/* async, and every caller awaits it: an MV3 service worker can be torn down
+   the instant its listener returns, and a fire-and-forget fetch() to the
+   phone relay loses that race far more often than the near-instant
+   chrome.notifications.create() call does. */
+async function notifyOne(item) {
   const id = 'tag|' + item.hash;
   chrome.notifications.create(id, {
     type: 'basic',
@@ -71,7 +75,7 @@ function notifyOne(item) {
     priority: 2,
     requireInteraction: false
   });
-  QA.pushToPhone((item.actor || 'Someone') + ' tagged you', (item.text || '').slice(0, 200), item.href || '');
+  await QA.pushToPhone((item.actor || 'Someone') + ' tagged you', (item.text || '').slice(0, 200), item.href || '');
   return id;
 }
 
@@ -171,10 +175,10 @@ async function checkTrello(reason) {
     return { popped: 0, reason: reason };
   }
 
-  fresh.slice(0, MAX_POPUPS).forEach((item) => {
-    const id = notifyOne(item);
+  for (const item of fresh.slice(0, MAX_POPUPS)) {
+    const id = await notifyOne(item);
     pending[id] = { url: item.href, shortLink: item.shortLink || '', hash: item.hash, actor: item.actor, card: item.cardName };
-  });
+  }
 
   if (fresh.length > MAX_POPUPS) {
     const extra = fresh.length - MAX_POPUPS;
@@ -186,7 +190,7 @@ async function checkTrello(reason) {
       message: 'Open the extension to work through them.',
       priority: 1
     });
-    QA.pushToPhone(moreTitle, 'Open the extension to work through them.', '');
+    await QA.pushToPhone(moreTitle, 'Open the extension to work through them.', '');
   }
 
   fresh.forEach((i) => { notified[i.hash] = now; });
@@ -520,7 +524,7 @@ async function prepareFollowup(reason) {
   return draft;
 }
 
-function notifyFollowup(draft) {
+async function notifyFollowup(draft) {
   const n = (draft.entries || []).length;
   const missing = (draft.entries || []).filter((e) => (e.asks || []).length).length;
   const message = n
@@ -535,7 +539,7 @@ function notifyFollowup(draft) {
     contextMessage: 'Click to review before anything is sent',
     priority: 1
   });
-  QA.pushToPhone('Follow-up draft ready', message, '');
+  await QA.pushToPhone('Follow-up draft ready', message, '');
 }
 
 chrome.notifications.onClicked.addListener((id) => {
@@ -580,20 +584,20 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   chrome.alarms.create('trello', { periodInMinutes: 1 });
   scheduleFollowup();
-  checkTrello('installed');
+  await checkTrello('installed');
 });
 
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   chrome.alarms.create('trello', { periodInMinutes: 1 });
   scheduleFollowup();
-  checkTrello('startup');
+  await checkTrello('startup');
 });
 
 chrome.alarms.onAlarm.addListener(async (a) => {
-  if (a.name === 'trello') checkTrello('alarm');
+  if (a.name === 'trello') await checkTrello('alarm');
   if (a.name === 'followup') {
     const draft = await prepareFollowup('weekly');
-    notifyFollowup(draft);
+    await notifyFollowup(draft);
   }
 });
 
@@ -603,10 +607,10 @@ function queueCheck(tabId, url) {
   debounce.set(tabId, setTimeout(() => updateBadge(tabId, url), 1200));
 }
 
-chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (info.status === 'complete' && tab && tab.url) {
     queueCheck(tabId, tab.url);
-    if (QA.isTrello(tab.url)) checkTrello('trello tab loaded');
+    if (QA.isTrello(tab.url)) await checkTrello('trello tab loaded');
   }
 });
 
@@ -620,7 +624,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   if (!msg) return false;
   if (msg.type === 'refreshBadge' && msg.tabId) updateBadge(msg.tabId, msg.url);
-  if (msg.type === 'trelloMaybeNew') checkTrello(msg.why || 'page nudge');
+  if (msg.type === 'trelloMaybeNew') { checkTrello(msg.why || 'page nudge').then((r) => respond && respond(r)); return true; }
   if (msg.type === 'testNotification') {
     chrome.notifications.create('test|' + Date.now(), {
       type: 'basic',
