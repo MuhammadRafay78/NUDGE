@@ -62,6 +62,7 @@ async function addCard(title) {
 }
 
 const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
+const expanded = new Set();   // card ids currently showing full text, survives a refresh
 
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Open &rarr;</a>' : '';
@@ -70,12 +71,14 @@ function itemHtml(card) {
   ).join('');
   const body = card.body || '';
   const long = body.length > LONG_BODY;
+  const isOpen = expanded.has(card.id);
   return (
     '<div class="item" data-id="' + esc(card.id) + '">' +
       '<div class="t">' + esc(card.title) + '</div>' +
       (card.context ? '<div class="ctx">' + esc(card.context) + '</div>' : '') +
-      (body ? '<div class="b clamp">' + esc(body) + '</div>' : '') +
-      (long ? '<button class="more">Show more</button>' : '') +
+      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
+      (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
       '<div class="meta">' +
         '<span class="when">' + ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
@@ -111,8 +114,10 @@ boardEl.addEventListener('change', async (e) => {
 
 boardEl.addEventListener('click', async (e) => {
   if (e.target.classList.contains('more')) {
+    const id = e.target.closest('.item').dataset.id;
     const b = e.target.previousElementSibling;
     const collapsed = b.classList.toggle('clamp');
+    if (collapsed) expanded.delete(id); else expanded.add(id);
     e.target.textContent = collapsed ? 'Show more' : 'Show less';
     return;
   }
@@ -156,4 +161,6 @@ if (!code) {
   statusEl.textContent = 'Pair this phone first from the home page, then come back here.';
 } else {
   load();
+  setInterval(() => { if (document.visibilityState === 'visible') load(); }, 12000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(); });
 }

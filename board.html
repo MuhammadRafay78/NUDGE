@@ -20,16 +20,22 @@
     @media (max-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .board { grid-template-columns: 1fr; } }
 
-    .col { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 200px; }
+    .col { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 200px;
+      transition: background .1s, border-color .1s; }
+    .col.drag-over { background: var(--accent-soft); border-color: var(--accent); }
     .col h2 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
       margin: 4px 6px 10px; display: flex; justify-content: space-between; }
     .col h2 .n { color: var(--fg); font-weight: 700; }
     .empty { color: var(--muted); font-size: 12.5px; padding: 8px 6px; }
 
-    .item { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; }
+    .item { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px;
+      cursor: grab; }
+    .item.dragging { opacity: .4; }
     .item .t { font-weight: 650; font-size: 13.5px; margin-bottom: 3px; }
     .item .ctx { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px;
                  margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item .due { display: inline-block; color: var(--accent); background: var(--accent-soft);
+                 font-size: 10.5px; font-weight: 650; padding: 2px 7px; border-radius: 5px; margin-bottom: 6px; }
     .item .b { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; }
     .item .b.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
@@ -46,7 +52,7 @@
 </head>
 <body>
   <h1>Board</h1>
-  <p class="lede">Every mobile-pushed tag lands in Inbox, shared with the same board on your paired phone.</p>
+  <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns, or use its dropdown.</p>
 
   <div class="bar2">
     <input type="text" id="newTitle" placeholder="Start a card…" maxlength="200">

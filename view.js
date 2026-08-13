@@ -713,7 +713,12 @@ function cardFor(item) {
   board.addEventListener('click', async () => {
     board.disabled = true;
     board.textContent = 'Adding…';
-    const res = await QA.fileCard((item.actor || 'Someone') + ' tagged you', item.text || '', item.href || '', item.cardName || '');
+    const d = dueOf(item);
+    const lab = d ? QA.dueLabel(d.due, d.dueComplete) : null;
+    const res = await QA.fileCard(
+      (item.actor || 'Someone') + ' tagged you', item.text || '', item.href || '',
+      item.cardName || '', lab ? lab.text : ''
+    );
     const note = card.querySelector('[data-role=boardnote]') || document.createElement('div');
     note.dataset.role = 'boardnote';
     card.appendChild(note);
