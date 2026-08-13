@@ -2604,6 +2604,38 @@ var QA = (function () {
     await chrome.storage.local.set({ ai: Object.assign(cur, patch) });
   }
 
+  /* ---------- mobile push (Web Push relay, see mobile-push/) ---------- */
+
+  async function getPush() {
+    const got = await chrome.storage.local.get({ push: null });
+    return Object.assign({ on: false, serverUrl: '', code: '' }, got.push || {});
+  }
+
+  async function setPush(patch) {
+    const cur = await getPush();
+    await chrome.storage.local.set({ push: Object.assign(cur, patch) });
+  }
+
+  /* Fire-and-forget: a phone not being reachable should never block a desktop
+     notification or throw inside the caller. */
+  async function pushToPhone(title, body, url) {
+    const cfg = await getPush();
+    if (!cfg.on || !cfg.serverUrl || !cfg.code) return { ok: false, skipped: true };
+    try {
+      const base = cfg.serverUrl.replace(/\/+$/, '');
+      const res = await fetch(base + '/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: cfg.code, title: title, body: body, url: url || '' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) return { ok: false, error: (data && data.error) || ('HTTP ' + res.status) };
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
   /* Build the grounding context. Trello's structured notifications first, since
      that's the good data, then whatever the saved questions matched, then page text. */
   function buildContext(state) {
@@ -3782,6 +3814,7 @@ var QA = (function () {
     chipForEvent, decodeDateKey, meetingDate, whenLabel, DAY_SHORT, MONTH_SHORT,
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
+    getPush, setPush, pushToPhone,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

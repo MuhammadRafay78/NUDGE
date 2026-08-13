@@ -154,6 +154,32 @@
     </p>
   </div>
 
+  <div class="card" id="push">
+    <div class="head"><b style="font-size:15px">Mobile notifications</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      Relays the same tag, follow-up and "more waiting" notifications to your phone over Web Push, via a
+      small server you run yourself (see <code>mobile-push/</code> in the repo). Pair your phone once at
+      that server's address — open it on your phone, add it to your Home Screen, and it will show you an
+      8-character pairing code — then paste the server address and that code below.
+    </p>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="pushOn"> Also notify my phone</label>
+      <span class="spacer"></span>
+      <button id="pushTest">Send a test one</button>
+      <span class="saved" id="pushState"></span>
+    </div>
+    <div class="row">
+      <div>
+        <label for="pushUrl">Server address</label>
+        <input type="text" id="pushUrl" placeholder="https://your-server.example.com" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label for="pushCode">Pairing code</label>
+        <input type="text" id="pushCode" placeholder="e.g. 7QK3M9PZ" autocomplete="off" spellcheck="false" style="text-transform:uppercase">
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="ai">
     <div class="head"><b style="font-size:15px">Ask Claude</b></div>
     <p class="hint" style="margin:6px 0 0">
