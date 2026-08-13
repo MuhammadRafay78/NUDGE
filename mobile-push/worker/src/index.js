@@ -4,6 +4,9 @@ import webPush from 'web-push';
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 
+const COLUMNS = ['inbox', 'doing', 'action', 'done'];
+const boardKey = (code) => 'board:' + code;
+
 function newCode() {
   const bytes = new Uint8Array(CODE_LENGTH);
   crypto.getRandomValues(bytes);
@@ -25,6 +28,34 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
 };
+
+/* ---------- board (Kanban cards), one card list per pairing code ---------- */
+
+async function loadBoard(env, code) {
+  const raw = await env.PUSH_KV.get(boardKey(code));
+  return raw ? JSON.parse(raw) : [];
+}
+
+async function saveBoard(env, code, cards) {
+  await env.PUSH_KV.put(boardKey(code), JSON.stringify(cards));
+}
+
+async function addCard(env, code, patch) {
+  const cards = await loadBoard(env, code);
+  const now = Date.now();
+  const card = {
+    id: crypto.randomUUID(),
+    title: (patch.title || '').slice(0, 200) || 'Untitled',
+    body: (patch.body || '').slice(0, 2000),
+    url: patch.url || '',
+    column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
+    createdAt: now,
+    updatedAt: now
+  };
+  cards.unshift(card);
+  await saveBoard(env, code, cards);
+  return card;
+}
 
 /* Delivers via web-push's own encryption (RFC 8291 aes128gcm) and VAPID JWT,
    but does the actual HTTP request with fetch() rather than web-push's
@@ -88,10 +119,53 @@ export default {
           return json({ ok: false, error: 'That phone unsubscribed or the pairing expired — pair again.' }, 410);
         }
         if (!res.ok) return json({ ok: false, error: 'Push service refused (' + res.status + ').' }, 502);
+        await addCard(env, code, { title: title, body: body, url: pushUrl, column: 'inbox' });
         return json({ ok: true });
       } catch (e) {
         return json({ ok: false, error: String((e && e.message) || e) }, 502);
       }
+    }
+
+    if (url.pathname === '/api/cards' && request.method === 'GET') {
+      const code = String(url.searchParams.get('code') || '').toUpperCase();
+      if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
+      return json({ ok: true, cards: await loadBoard(env, code) });
+    }
+
+    if (url.pathname === '/api/cards' && request.method === 'POST') {
+      const payload = await request.json().catch(() => ({}));
+      const code = String(payload.code || '').toUpperCase();
+      if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
+      const card = await addCard(env, code, payload);
+      return json({ ok: true, card: card });
+    }
+
+    const cardMatch = url.pathname.match(/^\/api\/cards\/([^/]+)$/);
+    if (cardMatch && request.method === 'PATCH') {
+      const payload = await request.json().catch(() => ({}));
+      const code = String(payload.code || '').toUpperCase();
+      const column = payload.column;
+      if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
+      if (!COLUMNS.includes(column)) return json({ ok: false, error: 'Invalid column.' }, 400);
+
+      const cards = await loadBoard(env, code);
+      const card = cards.find((c) => c.id === cardMatch[1]);
+      if (!card) return json({ ok: false, error: 'Unknown card.' }, 404);
+
+      card.column = column;
+      card.updatedAt = Date.now();
+      await saveBoard(env, code, cards);
+      return json({ ok: true, card: card });
+    }
+
+    if (cardMatch && request.method === 'DELETE') {
+      const payload = await request.json().catch(() => ({}));
+      const code = String(payload.code || '').toUpperCase();
+      if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
+
+      const cards = await loadBoard(env, code);
+      await saveBoard(env, code, cards.filter((c) => c.id !== cardMatch[1]));
+      return json({ ok: true });
     }
 
     return env.ASSETS.fetch(request);

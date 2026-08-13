@@ -139,14 +139,34 @@ From then on, every tag notification, the "N more tags waiting" summary, and
 the weekly follow-up reminder are pushed to the phone alongside the desktop
 notification — tapping one opens the card, same as on desktop.
 
+## Kanban board
+
+Every successful push also drops a card into an **Inbox** column on a small
+Kanban board — same server, same pairing code, so the extension's board
+(**popup/side panel → Board**, or Settings → Mobile notifications → Open
+board) and the phone's board (open the pairing page → **Open board**) show
+the same cards. Columns are fixed: **Inbox → Doing → Action Items → Done**.
+Move a card with its dropdown; type into "Start a card…" to add one by hand
+(lands straight in Doing) for something you're working on that didn't come
+from a notification.
+
+The board needs nothing beyond what pairing already set up — no extra
+config — but it does require Settings → Mobile notifications to have a
+server address and pairing code filled in, even if the phone-push toggle
+itself is off.
+
 ## API
 
 | Route | Body | Does |
 |---|---|---|
 | `GET /api/vapid-public-key` | — | Public key the pairing page subscribes with |
 | `POST /api/register` | `{ subscription }` | Stores a `PushSubscription`, returns `{ code }` |
-| `POST /api/notify` | `{ code, title, body, url }` | Sends a push to that code's phone |
+| `POST /api/notify` | `{ code, title, body, url }` | Sends a push to that code's phone, and files a card in Inbox |
 | `POST /api/unpair` | `{ code }` | Forgets that phone |
+| `GET /api/cards?code=` | — | Lists that code's board cards |
+| `POST /api/cards` | `{ code, title, body?, url?, column? }` | Adds a card (defaults to Inbox) |
+| `PATCH /api/cards/:id` | `{ code, column }` | Moves a card to `inbox`\|`doing`\|`action`\|`done` |
+| `DELETE /api/cards/:id` | `{ code }` | Removes a card |
 
 `code` is an 8-character pairing secret (`newCode()` in `server.js`) — anyone
 who has it can push notifications to that phone, so treat it like a password

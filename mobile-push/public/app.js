@@ -7,6 +7,7 @@ const codeVal = document.getElementById('codeVal');
 const codeStatus = document.getElementById('codeStatus');
 const testBtn = document.getElementById('testBtn');
 const unpairBtn = document.getElementById('unpairBtn');
+const boardBtn = document.getElementById('boardBtn');
 
 const isStandalone = window.navigator.standalone === true ||
   window.matchMedia('(display-mode: standalone)').matches;
@@ -98,6 +99,8 @@ async function init() {
     }
   });
 }
+
+boardBtn && boardBtn.addEventListener('click', () => { location.href = '/board.html'; });
 
 testBtn && testBtn.addEventListener('click', async () => {
   const code = localStorage.getItem('nudgeCode');

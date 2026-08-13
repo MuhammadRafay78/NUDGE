@@ -2636,6 +2636,70 @@ var QA = (function () {
     }
   }
 
+  /* ---------- the Kanban board, same server as the phone relay ----------
+     One board per pairing code, so the extension and the paired phone see
+     the same cards. Requires Settings > Mobile notifications to be filled
+     in even if push itself is switched off. */
+
+  const BOARD_COLUMNS = [
+    { id: 'inbox', label: 'Inbox' },
+    { id: 'doing', label: 'Doing' },
+    { id: 'action', label: 'Action Items' },
+    { id: 'done', label: 'Done' }
+  ];
+
+  async function boardBase() {
+    const cfg = await getPush();
+    if (!cfg.serverUrl || !cfg.code) return null;
+    return { base: cfg.serverUrl.replace(/\/+$/, ''), code: cfg.code };
+  }
+
+  async function boardApi(path, options) {
+    const cx = await boardBase();
+    if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
+    const res = await fetch(cx.base + path, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error((data && data.error) || ('HTTP ' + res.status));
+    return { data: data, code: cx.code };
+  }
+
+  async function fetchCards() {
+    const cx = await boardBase();
+    if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
+    const { data } = await boardApi('/api/cards?code=' + encodeURIComponent(cx.code));
+    return data.cards || [];
+  }
+
+  async function createCard(title, body, url, column) {
+    const cx = await boardBase();
+    if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
+    const { data } = await boardApi('/api/cards', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: cx.code, title: title, body: body || '', url: url || '', column: column || 'inbox' })
+    });
+    return data.card;
+  }
+
+  async function moveCard(id, column) {
+    const cx = await boardBase();
+    const { data } = await boardApi('/api/cards/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: cx.code, column: column })
+    });
+    return data.card;
+  }
+
+  async function deleteCard(id) {
+    const cx = await boardBase();
+    await boardApi('/api/cards/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: cx.code })
+    });
+  }
+
   /* Build the grounding context. Trello's structured notifications first, since
      that's the good data, then whatever the saved questions matched, then page text. */
   function buildContext(state) {
@@ -3815,6 +3879,7 @@ var QA = (function () {
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getPush, setPush, pushToPhone,
+    BOARD_COLUMNS, fetchCards, createCard, moveCard, deleteCard,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

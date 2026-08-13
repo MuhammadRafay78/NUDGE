@@ -3,3 +3,4 @@ node_modules/
 .dev.vars
 .wrangler/
 subscriptions.json
+boards.json
