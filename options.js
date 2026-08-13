@@ -315,6 +315,10 @@ pCode.addEventListener('change', async () => {
   flash('Saved.');
 });
 
+document.getElementById('pushBoard').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('board.html') });
+});
+
 document.getElementById('pushTest').addEventListener('click', () => {
   pState.textContent = ' Sending…';
   tell({ type: 'testPush' }, (r) => {

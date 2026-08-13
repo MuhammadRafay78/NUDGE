@@ -1537,6 +1537,10 @@ async function wire() {
     chrome.tabs.create({ url: chrome.runtime.getURL('followup.html') });
   });
 
+  el('board-link').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('board.html') });
+  });
+
   el('ask-btn').addEventListener('click', askNow);
   el('ask-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askNow(); } });
 

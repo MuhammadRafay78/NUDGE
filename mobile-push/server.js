@@ -7,6 +7,8 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
+const BOARD_FILE = path.join(__dirname, 'boards.json');
+const COLUMNS = ['inbox', 'doing', 'action', 'done'];
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -38,6 +40,34 @@ function newCode(store) {
     code = Array.from({ length: CODE_LENGTH }, () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]).join('');
   } while (store[code]);
   return code;
+}
+
+/* ---------- board (Kanban cards), one card list per pairing code ---------- */
+
+function loadBoards() {
+  try { return JSON.parse(fs.readFileSync(BOARD_FILE, 'utf8')); } catch (e) { return {}; }
+}
+
+function saveBoards(boards) {
+  fs.writeFileSync(BOARD_FILE, JSON.stringify(boards, null, 2));
+}
+
+function addCard(code, patch) {
+  const boards = loadBoards();
+  const cards = boards[code] || (boards[code] = []);
+  const now = Date.now();
+  const card = {
+    id: crypto.randomUUID(),
+    title: (patch.title || '').slice(0, 200) || 'Untitled',
+    body: (patch.body || '').slice(0, 2000),
+    url: patch.url || '',
+    column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
+    createdAt: now,
+    updatedAt: now
+  };
+  cards.unshift(card);
+  saveBoards(boards);
+  return card;
 }
 
 const app = express();
@@ -91,6 +121,7 @@ app.post('/api/notify', async (req, res) => {
 
   try {
     await webpush.sendNotification(entry.subscription, JSON.stringify({ title: title, body: body, url: url }));
+    addCard(code, { title: title, body: body, url: url, column: 'inbox' });
     res.json({ ok: true });
   } catch (e) {
     if (e && (e.statusCode === 404 || e.statusCode === 410)) {
@@ -100,6 +131,49 @@ app.post('/api/notify', async (req, res) => {
     }
     res.status(502).json({ ok: false, error: String((e && e.message) || e) });
   }
+});
+
+app.get('/api/cards', (req, res) => {
+  const code = String(req.query.code || '').toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+  const boards = loadBoards();
+  res.json({ ok: true, cards: boards[code] || [] });
+});
+
+app.post('/api/cards', (req, res) => {
+  const code = String((req.body && req.body.code) || '').toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+  const card = addCard(code, req.body || {});
+  res.json({ ok: true, card: card });
+});
+
+app.patch('/api/cards/:id', (req, res) => {
+  const code = String((req.body && req.body.code) || '').toUpperCase();
+  const column = req.body && req.body.column;
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+  if (!COLUMNS.includes(column)) return res.status(400).json({ ok: false, error: 'Invalid column.' });
+
+  const boards = loadBoards();
+  const cards = boards[code] || [];
+  const card = cards.find((c) => c.id === req.params.id);
+  if (!card) return res.status(404).json({ ok: false, error: 'Unknown card.' });
+
+  card.column = column;
+  card.updatedAt = Date.now();
+  saveBoards(boards);
+  res.json({ ok: true, card: card });
+});
+
+app.delete('/api/cards/:id', (req, res) => {
+  const code = String((req.body && req.body.code) || '').toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+
+  const boards = loadBoards();
+  const cards = boards[code] || [];
+  const next = cards.filter((c) => c.id !== req.params.id);
+  boards[code] = next;
+  saveBoards(boards);
+  res.json({ ok: true });
 });
 
 app.listen(PORT, () => {
