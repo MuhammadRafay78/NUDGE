@@ -18,7 +18,7 @@ let TAB = null;
 let LAST = null;      // last scan
 let QUEUE = [];       // what you still have to deal with
 let IDX = 0;          // which one you're looking at
-let SHOW_OLDER = false;
+let VIEW_MODE = 'active';   // 'active' | 'done' — exclusive, never mixed in one list
 let RANGE_MODE = 'today';   // Today by default — the last week rarely matters
 let GROUP = 'all';   // all | qtm | tpr | cdp
 let ASK = null;       // { question, summary } while showing an answer
@@ -73,7 +73,7 @@ function buildQueue() {
   });
   if (REPLYING && !all.some((i) => i.hash === REPLYING)) REPLYING = null;
   const inScope = all.filter((i) => QA.inGroup(i, GROUP));
-  const list = SHOW_OLDER ? inScope : inScope.filter((i) => i.isNew);
+  const list = VIEW_MODE === 'done' ? inScope.filter((i) => !i.isNew) : inScope.filter((i) => i.isNew);
   /* Order: unread first, then whatever the triage made of it, then newest.
      Note what this does NOT do — nothing is filtered out by its bucket. An item
      the model called FYI still sits in the queue; it just sits further down. */
@@ -164,7 +164,7 @@ function hiddenOldCount() {
 /* ---------- render ---------- */
 
 function filterSummary() {
-  const date = QA.rangeFor(RANGE_MODE).label;
+  const date = RANGE_MODE === 'custom' ? QA.customDateLabel() : QA.rangeFor(RANGE_MODE).label;
   return GROUP === 'all' ? date : date + ' · ' + QA.groupFor(GROUP).label;
 }
 
@@ -209,6 +209,27 @@ function drawDates() {
     });
     box.appendChild(b);
   });
+
+  // any single day, not just the presets above
+  const pick = document.createElement('input');
+  pick.type = 'date';
+  pick.className = 'chip date-pick' + (RANGE_MODE === 'custom' ? ' on' : '');
+  pick.title = 'Pick any date';
+  const existing = QA.getCustomDate();
+  if (existing) pick.value = existing;
+  pick.addEventListener('click', (e) => e.stopPropagation());
+  pick.addEventListener('change', async () => {
+    if (!pick.value) return;
+    QA.setCustomDate(pick.value);
+    RANGE_MODE = 'custom';
+    IDX = 0;
+    await chrome.storage.sync.set({ rangeMode: RANGE_MODE, customDate: pick.value });
+    ASK = null;
+    showAsk();
+    togglePop(false);
+    refresh({ quiet: true });
+  });
+  box.appendChild(pick);
 }
 
 function drawChips() {
@@ -256,7 +277,7 @@ function setTop() {
   } else if (!LAST) {
     c.textContent = 'Checking…';
   } else if (!QUEUE.length) {
-    c.textContent = SHOW_OLDER ? 'Nothing here' : 'Nothing new';
+    c.textContent = VIEW_MODE === 'done' ? 'Nothing done yet' : 'Nothing new';
   } else {
     c.textContent = QUEUE.length + ' need you' + (GROUP === 'all' ? '' : ' in ' + QA.groupFor(GROUP).label);
     if (QUEUE.length > 1) {
@@ -267,7 +288,7 @@ function setTop() {
   }
   el('prev').disabled = IDX <= 0;
   el('next').disabled = IDX >= QUEUE.length - 1;
-  el('filter').textContent = SHOW_OLDER ? 'Only new' : 'Show older';
+  el('filter').textContent = VIEW_MODE === 'done' ? '← Back to new' : 'Done';
   el('clear-all').textContent = UNDO ? 'Undo' : 'Clear all';
 }
 
@@ -282,9 +303,9 @@ function emptyState() {
   if (ASK) {
     big.textContent = 'Nothing matches';
     small.textContent = ASK.summary || '';
-  } else if (SHOW_OLDER) {
-    big.textContent = 'Nothing here';
-    small.textContent = 'No mentions in this time range.';
+  } else if (VIEW_MODE === 'done') {
+    big.textContent = 'Nothing done yet';
+    small.textContent = 'Nothing has been marked Done in this time range.';
   } else {
     const handled = handledCount();
     const older = hiddenOldCount();
@@ -300,7 +321,10 @@ function emptyState() {
     if (handled) bits.push(handled + ' already dealt with');
     const readAway = (LAST && LAST.results || []).reduce((n, r) => n + (r.readElsewhere || 0), 0);
     if (readAway) bits.push(readAway + ' already read in Trello');
-    if (older) bits.push(older + ' outside ' + QA.rangeFor(RANGE_MODE).label.toLowerCase());
+    if (older) {
+      const rangeLabel = RANGE_MODE === 'custom' ? QA.customDateLabel() : QA.rangeFor(RANGE_MODE).label;
+      bits.push(older + ' outside ' + rangeLabel.toLowerCase());
+    }
     small.textContent = bits.length ? bits.join(' · ') : 'Nobody has tagged you.';
   }
   d.appendChild(big);
@@ -715,10 +739,11 @@ function cardFor(item) {
     board.textContent = 'Adding…';
     const d = dueOf(item);
     const lab = d ? QA.dueLabel(d.due, d.dueComplete) : null;
-    const res = await QA.fileCard(
-      (item.actor || 'Someone') + ' tagged you', item.text || '', item.href || '',
-      item.cardName || '', lab ? lab.text : ''
-    );
+    const res = await QA.fileCard({
+      title: (item.actor || 'Someone') + ' tagged you', body: item.text || '', url: item.href || '',
+      context: item.cardName || '', due: lab ? lab.text : '',
+      cardId: item.cardId || '', actorUser: item.actorUser || ''
+    });
     const note = card.querySelector('[data-role=boardnote]') || document.createElement('div');
     note.dataset.role = 'boardnote';
     card.appendChild(note);
@@ -974,13 +999,13 @@ function draw() {
   /* Anything Trello counted as read but which never passed through here gets a
      pointer rather than silence. */
   const elsewhere = (LAST && LAST.results || []).reduce((n, r) => n + (r.readElsewhere || 0), 0);
-  if (elsewhere && !SHOW_OLDER) {
+  if (elsewhere && VIEW_MODE !== 'done') {
     const n = document.createElement('button');
     n.className = 'link';
     n.style.marginTop = '10px';
     n.textContent = elsewhere + (elsewhere === 1 ? ' mention was' : ' mentions were') +
       ' already read in Trello — show ' + (elsewhere === 1 ? 'it' : 'them');
-    n.addEventListener('click', () => { SHOW_OLDER = true; IDX = 0; draw(); });
+    n.addEventListener('click', () => { VIEW_MODE = 'done'; IDX = 0; draw(); });
     wrap.appendChild(n);
   }
 
@@ -1461,8 +1486,13 @@ let WIRED = false;
 async function wire() {
   if (WIRED) return;   // attach exactly once, however we got here
   WIRED = true;
-  const pref = await chrome.storage.sync.get({ rangeMode: 'today', group: 'all' });
-  RANGE_MODE = QA.UI_RANGES.indexOf(pref.rangeMode) === -1 ? 'today' : pref.rangeMode;
+  const pref = await chrome.storage.sync.get({ rangeMode: 'today', group: 'all', customDate: '' });
+  const validModes = QA.UI_RANGES.concat(['custom']);
+  RANGE_MODE = validModes.indexOf(pref.rangeMode) === -1 ? 'today' : pref.rangeMode;
+  if (RANGE_MODE === 'custom') {
+    if (pref.customDate) QA.setCustomDate(pref.customDate);
+    else RANGE_MODE = 'today';   // custom picked but no date saved somehow — fall back rather than showing "any time"
+  }
   GROUP = pref.group || 'all';
   await loadView();
 
@@ -1563,7 +1593,7 @@ async function wire() {
   el('ask-btn').addEventListener('click', askNow);
   el('ask-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); askNow(); } });
 
-  el('filter').addEventListener('click', () => { SHOW_OLDER = !SHOW_OLDER; IDX = 0; draw(); });
+  el('filter').addEventListener('click', () => { VIEW_MODE = VIEW_MODE === 'done' ? 'active' : 'done'; IDX = 0; draw(); });
 
   el('clear-all').addEventListener('click', async () => {
     if (UNDO) { await markDone(UNDO, true); return; }

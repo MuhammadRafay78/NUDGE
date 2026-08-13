@@ -612,6 +612,18 @@ var QA = (function () {
     );
   }
 
+  /* the day picked in the filter popover's date input ("YYYY-MM-DD"), or
+     null when no custom date is active — read by the 'custom' range below */
+  let CUSTOM_DATE_KEY = null;
+
+  function setCustomDate(dateKey) {
+    CUSTOM_DATE_KEY = dateKey || null;
+  }
+
+  function getCustomDate() {
+    return CUSTOM_DATE_KEY;
+  }
+
   const RANGES = [
     { mode: 'today', label: 'Today',
       since: () => startOfDayIn(Date.now()),
@@ -621,8 +633,23 @@ var QA = (function () {
       until: () => startOfDayIn(Date.now()) },
     { mode: '7d', label: 'Last 7 days', since: () => Date.now() - 7 * 864e5, until: () => 0 },
     { mode: '24h', label: 'Last 24 hours', since: () => Date.now() - 864e5, until: () => 0 },
-    { mode: 'any', label: 'Any time', since: () => 0, until: () => 0 }
+    { mode: 'any', label: 'Any time', since: () => 0, until: () => 0 },
+    { mode: 'custom', label: 'Custom date',
+      since: () => CUSTOM_DATE_KEY ? startOfDayIn(Date.parse(CUSTOM_DATE_KEY + 'T12:00:00Z')) : 0,
+      until: () => CUSTOM_DATE_KEY ? startOfDayIn(Date.parse(CUSTOM_DATE_KEY + 'T12:00:00Z')) + 864e5 : 0 }
   ];
+
+  /* how the custom date should actually read once picked, e.g. "Aug 25" —
+     separate from RANGES[].label (kept a plain string there) since callers
+     treat that field as static text, not something to invoke */
+  function customDateLabel() {
+    if (!CUSTOM_DATE_KEY) return 'Custom date';
+    try {
+      return new Date(CUSTOM_DATE_KEY + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return CUSTOM_DATE_KEY;
+    }
+  }
 
   const UI_RANGES = ['today', 'yesterday', '7d'];
 
@@ -790,6 +817,23 @@ var QA = (function () {
       if (!res.ok) return { ok: false, status: res.status };
       const c = await res.json();
       return { ok: true, due: c.due || null, dueComplete: !!c.dueComplete };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  /* Same idea as fetchCardDue, plus the card's real name — for filing a
+     board card with the actual client/card title rather than whatever (or
+     nothing) the notification payload happened to carry. */
+  async function fetchCardDetails(cardId) {
+    try {
+      const res = await fetch(
+        'https://trello.com/1/cards/' + encodeURIComponent(cardId) + '?fields=name,due,dueComplete',
+        { credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      if (!res.ok) return { ok: false, status: res.status };
+      const c = await res.json();
+      return { ok: true, name: c.name || '', due: c.due || null, dueComplete: !!c.dueComplete };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
     }
@@ -1277,6 +1321,15 @@ var QA = (function () {
   async function dueForCard(cardId) {
     if (!cardId) return { ok: false, error: 'no card' };
     return inTrelloTab(fetchCardDue, [cardId]);
+  }
+
+  /* Name + due date together, for filing a board card with the real thing
+     rather than whatever the notification payload happened to include.
+     Same "needs an open Trello tab" constraint as dueForCard — no direct-
+     fetch fallback, since that path is reserved for reading notifications. */
+  async function cardDetailsFor(cardId) {
+    if (!cardId) return { ok: false, error: 'no card' };
+    return inTrelloTab(fetchCardDetails, [cardId]);
   }
 
   async function reactToMention(item, reaction) {
@@ -2670,15 +2723,22 @@ var QA = (function () {
     return data.cards || [];
   }
 
-  async function createCard(title, body, url, column, context, due) {
+  /* fields: { title, body, url, column, context, due, cardId, actorUser } —
+     cardId/actorUser are Trello's shortLink + username, kept so a card can
+     later be replied to (posting a comment needs a card to post to, and
+     tagging the right person by default needs their username) without
+     requiring the fuller Trello lookup the popup's queue has. */
+  async function createCard(fields) {
     const cx = await boardBase();
     if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
+    const f = fields || {};
     const { data } = await boardApi('/api/cards', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: cx.code, title: title, body: body || '', url: url || '',
-        column: column || 'inbox', context: context || '', due: due || ''
+        code: cx.code, title: f.title, body: f.body || '', url: f.url || '',
+        column: f.column || 'inbox', context: f.context || '', due: f.due || '',
+        cardId: f.cardId || '', actorUser: f.actorUser || ''
       })
     });
     return data.card;
@@ -2686,9 +2746,9 @@ var QA = (function () {
 
   /* Fire-and-forget board logging: a missing/misconfigured server should
      never block the caller or throw, same spirit as pushToPhone. */
-  async function fileCard(title, body, url, context, due) {
+  async function fileCard(fields) {
     try {
-      await createCard(title, body, url, 'inbox', context, due);
+      await createCard(Object.assign({ column: 'inbox' }, fields));
       return { ok: true };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
@@ -3871,13 +3931,14 @@ var QA = (function () {
   return {
     BUILTINS, DEFAULT_RULES, ME, MY_INITIALS, peopleIn, hash, normalize, urlKey, globToRegex, siteMatches,
     extractPage, candidateItems, pageMembers, ruleHits, scan, RANGES, rangeFor, getRangeMode,
+    setCustomDate, getCustomDate, customDateLabel,
     fetchTrelloNotifications, trelloResults, isTrello, TRELLO_SNAPKEY,
     isCanopy, readCanopyPage, canopyRead, canopyDump, dumpPage,
     postTrelloComment, replyToCard, replyErrorMessage, QUICK_REPLIES,
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,
