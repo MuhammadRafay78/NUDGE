@@ -85,6 +85,8 @@ html { overflow-x: hidden; }
 .chip:hover { border-color: var(--muted); color: var(--fg); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
 .chip small { opacity: .75; margin-left: 5px; }
+.chip.date-pick { color-scheme: light dark; color: var(--fg); width: 124px; }
+.chip.date-pick.on { color: #fff; }
 
 /* ---- the one card ---- */
 .wrap { padding: 0 14px 14px; }

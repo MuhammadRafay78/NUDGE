@@ -68,7 +68,27 @@ async function mentionNames() {
    and it covers every fresh tag, not just the ones popped as OS notifications */
 async function fileTagCard(item) {
   const title = (item.actor || 'Someone') + ' tagged you';
-  await QA.fileCard(title, item.text || '', item.href || '', item.cardName || '');
+  let context = item.cardName || '';
+  let due = '';
+  /* best effort: the notification payload never carries a due date and only
+     sometimes carries the card name, so ask Trello for the real thing when
+     there's a card to ask about. Needs an open Trello tab (same constraint
+     as the popup's own due-date lookups) — falls back to whatever the
+     notification had if there isn't one, rather than blocking the card. */
+  if (item.cardId) {
+    const got = await QA.cardDetailsFor(item.cardId);
+    if (got && got.ok) {
+      if (got.name) context = got.name;
+      if (got.due) {
+        const lab = QA.dueLabel(got.due, got.dueComplete);
+        if (lab) due = lab.text;
+      }
+    }
+  }
+  await QA.fileCard({
+    title: title, body: item.text || '', url: item.href || '',
+    context: context, due: due, cardId: item.cardId || '', actorUser: item.actorUser || ''
+  });
 }
 
 async function notifyOne(item) {
