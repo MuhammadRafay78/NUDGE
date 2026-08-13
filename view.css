@@ -1,0 +1,281 @@
+:root {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --fg: #18181b;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --line: #e4e4e7;
+  --accent: #c2410c;
+  --accent-soft: #fff7ed;
+  --chip: #f4f4f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
+    --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+/* The popup grew to Chrome's 800px maximum, with 400px of empty space beside the
+   card: Chrome sizes a popup to its content, so ONE unbreakable thing anywhere in
+   the document drags the whole window wide. Pin the width and refuse to overflow
+   sideways, so nothing can do that again. */
+body.popup { width: 400px; max-width: 400px; overflow-x: hidden; }
+body.panel { min-height: 100vh; }
+html { overflow-x: hidden; }
+.wrap, .card { max-width: 100%; box-sizing: border-box; }
+
+/* `hidden` could not hide .bar or .ask, because a class that sets `display`
+   beats the browser's own [hidden] rule. The filter row and the Ask box were
+   still on screen on the Canopy tab, and an empty #rescan button was being laid
+   out on every view. One line fixes all of them, and any future use too. */
+[hidden] { display: none !important; }
+
+/* ---- top bar ---- */
+.top { display: flex; align-items: center; gap: 4px; padding: 12px 14px 8px; }
+.count { font-size: 15px; font-weight: 600; flex: 1; }
+.count small { font-weight: 400; color: var(--muted); font-size: 12px; }
+.ico {
+  width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+}
+.ico:hover { background: var(--chip); color: var(--fg); }
+.ico:disabled { opacity: .3; cursor: default; }
+.ico:disabled:hover { background: transparent; }
+.ico svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- control bar + filter popover ---- */
+.bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px 10px; position: relative; font-size: 12px;
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 500; padding: 5px 11px;
+  border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--fg);
+}
+.pill:hover { border-color: var(--muted); }
+.pill.open { border-color: var(--accent); color: var(--accent); }
+.pill svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.pill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+.pop {
+  position: absolute; top: 30px; left: 14px; z-index: 20; min-width: 218px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .18);
+}
+.pop-sec { margin-bottom: 12px; }
+.pop-label {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin-bottom: 7px;
+}
+.pop-foot { border-top: 1px solid var(--line); padding-top: 9px; }
+
+/* ---- filter chips ---- */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 0; }
+.chip {
+  font: inherit; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; color: var(--muted);
+}
+.chip:hover { border-color: var(--muted); color: var(--fg); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.chip small { opacity: .75; margin-left: 5px; }
+
+/* ---- the one card ---- */
+.wrap { padding: 0 14px 14px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+}
+.who { display: flex; align-items: center; gap: 10px; margin-bottom: 11px; }
+.av {
+  width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: #fff; letter-spacing: .02em;
+}
+.name { font-weight: 600; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 1px; }
+.dot-new { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: auto; flex: 0 0 7px; }
+.quote {
+  font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+  padding: 10px 12px; background: var(--chip); border-radius: 10px;
+}
+.place {
+  display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-size: 12.5px; color: var(--accent); overflow: hidden;
+}
+.place svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; flex: 0 0 14px; }
+.place span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---------- Canopy ---------- */
+.card.canopy { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.card.canopy .chead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.ctag {
+  font-size: 10px; font-weight: 700; letter-spacing: .08em; padding: 3px 6px;
+  border-radius: 5px; background: var(--accent); color: #fff;
+}
+.cwho { font-weight: 650; font-size: 14px; flex: 1; min-width: 0; }
+.ctype { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
+.crow { display: flex; gap: 8px; font-size: 12px; margin-bottom: 6px; }
+.ck { color: var(--muted); min-width: 52px; }
+.cv { color: var(--fg); word-break: break-word; }
+.csub {
+  font-size: 11.5px; font-weight: 650; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .03em; margin: 12px 0 6px;
+}
+.csub.warnish { color: var(--accent); }
+.cfile { padding: 5px 0; border-top: 1px solid var(--line); }
+.cfn { font-size: 12.5px; word-break: break-word; }
+.cfm { font-size: 11px; color: var(--muted); margin-top: 1px; overflow-wrap: anywhere; }
+.csub, .cwho, .link, .bucket-why { overflow-wrap: anywhere; }
+pre.debug {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.45;
+  white-space: pre-wrap; word-break: break-word; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px; margin: 10px 0 0;
+  max-height: 240px; overflow: auto; user-select: text;
+}
+
+.react { display: flex; align-items: center; gap: 5px; margin-top: 12px; }
+button.emo {
+  font-size: 15px; line-height: 1; padding: 5px 8px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: transparent; transition: transform .08s ease;
+}
+button.emo:hover { border-color: var(--muted); transform: translateY(-1px); }
+button.emo:active { transform: none; }
+button.emo.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+button.emo:disabled { opacity: .5; cursor: default; }
+.rnote { font-size: 12px; color: var(--muted); margin-left: 4px; }
+.rnote.ok { color: #16a34a; font-weight: 600; }
+.rnote.bad { color: var(--accent); }
+
+.acts { display: flex; gap: 7px; margin-top: 14px; }
+button.btn {
+  font: inherit; font-size: 13px; font-weight: 500; padding: 8px 13px; border-radius: 9px;
+  border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer;
+}
+button.btn:hover { border-color: var(--muted); }
+button.btn.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.btn.go:hover { filter: brightness(1.08); }
+.spacer { flex: 1; }
+
+/* ---- reply composer ---- */
+.reply { margin-top: 12px; }
+.quick { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+.quick .chip { font-size: 11.5px; padding: 4px 9px; }
+.reply-in {
+  width: 100%; font: inherit; font-size: 13.5px; line-height: 1.45; padding: 9px 11px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+  resize: vertical; min-height: 62px;
+}
+.reply-in:focus { outline: none; border-color: var(--accent); }
+.reply-wrap { position: relative; }
+.mention-list {
+  position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; z-index: 30;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.mention-row {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  font: inherit; font-size: 12.5px; padding: 7px 11px; cursor: pointer;
+  border: 0; background: transparent; color: var(--fg);
+}
+.mention-row b { font-weight: 600; }
+.mention-row span { color: var(--muted); font-size: 11.5px; }
+.mention-row.on, .mention-row:hover { background: var(--chip); }
+.reply-status { font-size: 11.5px; color: var(--muted); align-self: center; }
+.reply-status.bad { color: var(--accent); }
+
+/* ---- empty / message states ---- */
+.empty { padding: 22px 4px; text-align: center; color: var(--muted); }
+.empty .big { font-size: 15px; color: var(--fg); font-weight: 600; margin-bottom: 5px; }
+.empty .small { font-size: 12.5px; }
+.err { color: var(--accent); padding: 16px 4px; font-size: 13px; }
+
+/* ---- ask row ---- */
+.ask { display: flex; gap: 7px; padding: 0 14px 10px; }
+.ask input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 8px 11px;
+  border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+.ask input::placeholder { color: var(--faint); }
+.ask input:focus { outline: none; border-color: var(--accent); }
+
+.link { color: var(--muted); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.link:hover { color: var(--fg); }
+.answer { padding: 0 14px 10px; font-size: 13px; color: var(--fg); }
+.answer b { font-weight: 600; }
+
+/* ---- Trello / Canopy tabs ----
+   The Canopy section used to sit on top of the mentions and dwarf them. Two
+   tabs keep "what needs you" and "where you are" apart. */
+.tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.tab {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  color: var(--muted); padding: 7px 12px 8px; margin-bottom: -1px;
+  border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tnum {
+  font-size: 10.5px; font-weight: 700; line-height: 1;
+  padding: 2px 5px; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent);
+}
+.tab.on .tnum { background: var(--accent); color: #fff; }
+.tnum.quiet { background: var(--line); color: var(--muted); }
+
+/* ---- where an item came from ---- */
+.src {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
+  padding: 2px 5px; border-radius: 3px; text-transform: uppercase;
+  background: var(--line); color: var(--muted); flex: 0 0 auto;
+}
+.src.trello { background: color-mix(in srgb, #0079bf 22%, transparent); color: #4aa3d8; }
+.src.canopy { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #f59e0b; }
+
+/* ---- a list that starts folded ---- */
+.fold { border: none; background: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--muted); display: flex; align-items: center; gap: 6px; width: 100%;
+  text-align: left; margin: 10px 0 2px; }
+.fold:hover { color: var(--text); }
+.fold .caret { transition: transform .12s ease; display: inline-block; font-size: 9px; }
+.fold.open .caret { transform: rotate(90deg); }
+.fold .flabel { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+
+/* ---- triage buckets ---- */
+.bucket {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 3px; flex: 0 0 auto;
+}
+.bucket.needs { background: color-mix(in srgb, #ef4444 20%, transparent); color: #f87171; }
+.bucket.waiting { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.bucket.fyi { background: var(--line); color: var(--muted); }
+.bucket-why { font-size: 11px; color: var(--muted); margin-top: 6px; font-style: italic; }
+.bucket-head {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--muted); margin: 2px 0 6px;
+}
+
+/* ---- a card's deadline ---- */
+.due {
+  font-size: 10px; font-weight: 750; letter-spacing: .02em;
+  padding: 2px 6px; border-radius: 3px; margin-left: 6px; flex: 0 0 auto;
+  white-space: nowrap;
+}
+.due.overdue { background: color-mix(in srgb, #ef4444 24%, transparent); color: #fca5a5; }
+.due.today   { background: color-mix(in srgb, #ef4444 18%, transparent); color: #f87171; }
+.due.soon    { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.due.later   { background: var(--line); color: var(--muted); }
+.due.done    { background: color-mix(in srgb, #059669 18%, transparent); color: #6ee7b7; }
+.place { flex-wrap: wrap; }
+
+/* ---- the document ledger ---- */
+.ledger {
+  margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
+}
+.lrow { margin: 0 0 7px; }
+.lname { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }

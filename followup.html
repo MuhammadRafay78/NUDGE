@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Weekly follow-up</title>
+  <link rel="stylesheet" href="view.css">
+  <style>
+    body { width: auto; max-width: 780px; margin: 0 auto; padding: 26px 20px 60px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .lede { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+    .panel { border: 1px solid var(--line); border-radius: 12px; padding: 15px; margin-bottom: 12px; background: var(--card); }
+    .panel.off { opacity: .55; }
+    .panel.done { border-color: #16a34a; }
+    .chead { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .cname { font-weight: 650; font-size: 14px; flex: 1; }
+    .cwhen { color: var(--muted); font-size: 12px; }
+    .cmiss { font-size: 12px; color: var(--accent); margin-bottom: 9px; }
+    .cmiss.none { color: var(--muted); }
+    .msg {
+      width: 100%; min-height: 80px; font: inherit; font-size: 13.5px; line-height: 1.5;
+      padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--bg); color: var(--fg); resize: vertical;
+      overflow: hidden;            /* it grows to fit instead of scrolling */
+      box-sizing: border-box;
+    }
+    .msg:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; align-items: center; gap: 9px; margin-top: 11px; flex-wrap: wrap; }
+    .meta { color: var(--muted); font-size: 12px; }
+    .warn { color: var(--accent); font-size: 13px; }
+    .okmsg { color: #16a34a; font-size: 12px; font-weight: 600; }
+    .bar2 {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px 0 18px; position: sticky; top: 0; background: var(--bg); z-index: 5;
+    }
+    label.f { display: block; font-size: 11.5px; font-weight: 650; color: var(--muted);
+              text-transform: uppercase; letter-spacing: .03em; margin: 0 0 6px; }
+    select, input[type=text] { font: inherit; padding: 6px 9px; border-radius: 7px;
+              border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    .unmatched { font-size: 13px; color: var(--muted); }
+    .unmatched b { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <h1>Weekly follow-up</h1>
+  <p class="lede" id="lede">Loading…</p>
+  <p class="lede">One comment per card, each tagging the admin. Nothing is posted until you send it.</p>
+
+  <div class="bar2">
+    <button class="btn go" id="send-all">Send all</button>
+    <button class="btn" id="rebuild">Rebuild from calendar</button>
+    <span class="spacer"></span>
+    <span class="meta" id="status"></span>
+  </div>
+
+  <div id="cards"></div>
+  <div class="panel" id="leftovers" hidden></div>
+
+  <div class="panel">
+    <label class="f">Settings</label>
+    <div class="row">
+      <label class="meta">Only meetings containing
+        <input type="text" id="require" placeholder="QTM" style="margin-left:6px; width:120px">
+      </label>
+      <label class="meta">Always ignore
+        <input type="text" id="skip" placeholder="read.ai, booking, invite" style="margin-left:6px; width:200px">
+      </label>
+      <label class="meta">Admin's Trello handle
+        <input type="text" id="admin" placeholder="pauleleazar1" style="margin-left:6px">
+      </label>
+      <label class="meta">Read the calendar of
+        <select id="gcal" style="margin-left:6px"></select>
+      </label>
+      <label class="meta">Don't ask again if I already asked within
+        <select id="chasedays" style="margin-left:6px">
+          <option value="1">today</option>
+          <option value="2">2 days</option>
+          <option value="3">3 days</option>
+          <option value="7">a week</option>
+          <option value="0">never skip</option>
+        </select>
+      </label>
+      <label class="meta">Prepare it
+        <select id="weekday" style="margin-left:6px">
+          <option value="1">Monday</option><option value="2">Tuesday</option>
+          <option value="3">Wednesday</option><option value="4">Thursday</option>
+          <option value="5">Friday</option><option value="0">Sunday</option>
+        </select>
+      </label>
+      <label class="meta">at <select id="hour" style="margin-left:6px"></select></label>
+      <label class="meta"><input type="checkbox" id="on"> Prepare it automatically each week</label>
+    </div>
+    <label class="f" style="margin-top:14px">Chase the client for</label>
+    <div class="row" id="wanted"></div>
+    <p class="meta" style="margin-top:10px">
+      Each card's own <b>comments</b> decide what gets asked for: a document the comments say has arrived is dropped,
+      one that has been chased before says so, and one the client promised says that instead. If you already tagged the
+      admin on a card within the window above, it arrives unticked. Everything else on the checklists — prep notes,
+      master data, QBO access, older returns — is internal and never chased.
+      Only calendar events whose title contains the code above are considered; everything else is ignored, and anything in
+      <b>Always ignore</b> is dropped first: notetakers (Read.ai), booking links, meeting invites and cancelled events.
+      Comma-separate for more than one (e.g. <code>QTM, TPR</code>), or clear it to consider every meeting.
+      Rebuilding opens Google Calendar in a background tab for a few seconds, then closes it.
+    </p>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="followup.js"></script>
+</body>
+</html>

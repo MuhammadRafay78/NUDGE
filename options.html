@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Nudge — Settings</title>
+  <link rel="stylesheet" href="view.css">
+  <style>
+    body { width: auto; max-width: 860px; margin: 0 auto; padding: 24px 20px 60px; font-size: 14px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.lede { color: var(--muted); margin: 0 0 20px; }
+    .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    .card.off { opacity: .6; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .row > div { flex: 1 1 260px; }
+    label { display: block; font-size: 11.5px; font-weight: 650; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .03em; margin: 10px 0 4px; }
+    input[type=text], textarea {
+      width: 100%; font: inherit; padding: 6px 8px; border-radius: 6px;
+      border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+    }
+    textarea { min-height: 58px; resize: vertical; }
+    .hint { color: var(--muted); font-size: 11px; margin-top: 3px; }
+    .head { display: flex; align-items: center; gap: 10px; }
+    .head input[type=text] { font-weight: 650; font-size: 15px; }
+    .checks { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; }
+    .checks label { text-transform: none; letter-spacing: 0; font-weight: 400;
+                    color: var(--fg); font-size: 12.5px; display: flex; align-items: center; gap: 5px; margin: 0; }
+    .actions { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+    .spacer { flex: 1; }
+    .danger { color: var(--accent); }
+    .topbar { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; }
+    .saved { color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Settings</h1>
+  <p class="lede">Each question is a saved lookup. When you open the popup or side panel, every question whose site pattern matches the current URL is run against the full page, and anything that wasn't there last time is flagged <b>NEW</b>. No AI is involved — it's exact keyword, pattern and regex matching on the page text.</p>
+
+  <div class="topbar">
+    <button class="primary" id="add">+ New thing to watch for</button>
+    <label class="toggle"><input type="checkbox" id="autoCheck"> Show a count on the toolbar icon</label>
+    <span class="spacer"></span>
+    <button id="reset">Start over</button>
+    <span class="saved" id="saved"></span>
+  </div>
+
+  <div class="card" id="memory">
+    <div class="head"><b style="font-size:15px">What counts as dealt with</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      Reinstalling an extension makes Chrome delete everything it stored, including the record of
+      what you had marked <b>Done</b> — which is why the same cards kept coming back. So <b>Done</b>
+      now also marks that mention read in Trello. Trello remembers it, this extension does not have
+      to, and the Trello bell agrees with the panel.
+    </p>
+    <div class="row">
+      <div>
+        <label for="zone">Whose day counts</label>
+        <select id="zone" style="width:100%;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)">
+          <option value="America/Chicago">Central — Dallas (the firm's day)</option>
+          <option value="America/New_York">Eastern</option>
+          <option value="America/Denver">Mountain</option>
+          <option value="America/Los_Angeles">Pacific</option>
+          <option value="Asia/Karachi">Pakistan</option>
+          <option value="local">This computer's timezone</option>
+        </select>
+        <div class="hint" id="zoneNow"></div>
+      </div>
+      <div>
+        <div class="hint" style="margin-top:26px">
+          "Today", "Due tomorrow" and every date shown are worked out in this timezone.
+          It matters if you are not sitting where the firm is: at midnight in Karachi it is
+          still early afternoon of the previous day in Dallas, so with the computer's own
+          timezone "Today" empties out while the firm is still working, and a card due
+          6 August reads as the 7th. Central handles its own switch to daylight time.
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="trustRead">
+        Treat mentions already read in Trello as dealt with</label>
+      <span class="spacer"></span>
+      <span class="saved" id="memoryState"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      Leave this on and your Done list survives reinstalling. The trade-off: Trello also marks
+      things read when you open its notification bell, so a mention you glanced at there — but
+      never dealt with — will not appear as new. It is never hidden silently: the panel says
+      <i>"3 mentions were already read in Trello — show them"</i>, and <b>Show older</b> always
+      lists everything. Turn this off and only this extension's own record counts, which means
+      the Done list is lost whenever you reinstall.
+    </p>
+  </div>
+
+  <div class="card" id="triage">
+    <div class="head"><b style="font-size:15px">Sort mentions into Needs me / Waiting / FYI</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      Off by default, and nothing depends on it. With a
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>
+      key, each mention gets a label — <b>Needs me</b> when someone is asking you to do something or
+      answer a question, <b>Waiting</b> when the work sits with somebody else, <b>FYI</b> when it is
+      just an update. "Needs me" sorts to the top.
+    </p>
+    <p class="hint" style="margin:8px 0 0">
+      <b>It only labels and reorders.</b> Nothing is ever removed from your list, so a wrong label
+      costs you a glance rather than a missed deadline. If the key is absent, rejected or Google is
+      down, your queue is exactly what it is today.
+    </p>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="triageOn"> Sort my mentions</label>
+      <span class="spacer"></span>
+      <button id="triageModels">Reload model list</button>
+      <button id="triageTest">Test the key</button>
+      <span class="saved" id="triageState"></span>
+    </div>
+    <div class="row">
+      <div>
+        <label for="triageKey">Google AI Studio API key</label>
+        <input type="text" id="triageKey" placeholder="AIza…" autocomplete="off" spellcheck="false">
+        <div class="hint">Kept on this computer only (never synced to your Google account) and sent
+          only to Google's API. Paste it here, never into a chat or a file.</div>
+      </div>
+      <div>
+        <label for="triageModel">Model</label>
+        <select id="triageModel" style="width:100%;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)"></select>
+        <div class="hint">Read from Google using your key, so it only ever lists models you can
+          actually use. Flash is quick and costs very little; Pro judges better and is slower.</div>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      <b>Worth knowing before you switch it on.</b> The comment text, the card name and who wrote it
+      are sent to Google — and Trello comments at a tax firm carry client names. Free AI Studio keys
+      generally permit Google to use submitted data to improve their products; paid API keys do not.
+      Which tier you are on matters here, not just what it costs.
+    </p>
+  </div>
+
+  <div class="card" id="notify">
+    <div class="head"><b style="font-size:15px">Desktop notifications</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      When someone tags you in a Trello comment, a notification pops up on your desktop within a second or two.
+      Click it to jump straight to that card — it's marked done at the same time. <b>Done</b> clears it without opening anything.
+    </p>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="notifyOn"> Notify me when someone tags me</label>
+      <span class="spacer"></span>
+      <button id="notifyTest">Send a test one</button>
+      <button id="notifyNow">Check Trello now</button>
+      <span class="saved" id="notifyState"></span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      This works by watching Trello's own notification bell in an open Trello tab, so <b>keep a Trello tab open</b> —
+      pinning it is ideal. With no Trello tab open there's nothing to read, and you'll get the tags when you next open Trello.
+      If nothing appears at all, check that Chrome itself is allowed to send notifications in your system settings.
+    </p>
+  </div>
+
+  <div class="card" id="ai">
+    <div class="head"><b style="font-size:15px">Ask Claude</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      The question box in the popup sends Claude your Trello notifications and the text of the page you're on,
+      then shows the answer. This is the only part of the extension that talks to an AI, and it only fires when you press <b>Ask</b>.
+      Everything else stays local.
+    </p>
+    <label for="aikey">Your Anthropic API key</label>
+    <input type="password" id="aikey" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    <div class="hint">
+      Stored locally on this computer only (<code>chrome.storage.local</code>), never synced and never sent anywhere except
+      Anthropic's API. Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com → API keys</a>.
+      Paste it yourself — nobody else needs to see it.
+      <span id="keystate"></span>
+    </div>
+
+    <label for="aimodel">Model</label>
+    <select id="aimodel" style="font:inherit;padding:6px 8px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)"></select>
+    <div class="hint">Haiku is roughly a tenth the cost of Sonnet and fine for "who tagged me about X". Each answer shows its token count so you can see what you're spending.</div>
+
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="aienabled"> Show the Ask box</label>
+      <span class="spacer"></span>
+      <button id="aiclear" class="danger">Forget my key</button>
+    </div>
+  </div>
+
+  <div id="list"></div>
+
+  <script src="common.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
