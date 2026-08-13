@@ -63,19 +63,31 @@ async function mentionNames() {
    the instant its listener returns, and a fire-and-forget fetch() to the
    phone relay loses that race far more often than the near-instant
    chrome.notifications.create() call does. */
+/* board logging is independent of whether phone push is even switched on —
+   it only needs Settings > Mobile notifications' server + code filled in,
+   and it covers every fresh tag, not just the ones popped as OS notifications */
+async function fileTagCard(item) {
+  const title = (item.actor || 'Someone') + ' tagged you';
+  await QA.fileCard(title, item.text || '', item.href || '', item.cardName || '');
+}
+
 async function notifyOne(item) {
   const id = 'tag|' + item.hash;
+  const title = (item.actor || 'Someone') + ' tagged you';
   chrome.notifications.create(id, {
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-    title: (item.actor || 'Someone') + ' tagged you',
+    title: title,
     message: (item.text || '').slice(0, 200),
     contextMessage: item.cardName || 'Trello',
     buttons: [{ title: 'Open card' }, { title: 'Done' }],
     priority: 2,
     requireInteraction: false
   });
-  await QA.pushToPhone((item.actor || 'Someone') + ' tagged you', (item.text || '').slice(0, 200), item.href || '');
+  /* the push notification body stays short (web push has a ~4KB payload cap
+     and the OS tray truncates anyway); the board card gets the full text */
+  await QA.pushToPhone(title, (item.text || '').slice(0, 500), item.href || '');
+  await fileTagCard(item);
   return id;
 }
 
@@ -191,6 +203,9 @@ async function checkTrello(reason) {
       priority: 1
     });
     await QA.pushToPhone(moreTitle, 'Open the extension to work through them.', '');
+    /* these didn't get their own OS popup, but they're still new tags — file
+       them on the board same as the ones that did */
+    for (const item of fresh.slice(MAX_POPUPS)) { await fileTagCard(item); }
   }
 
   fresh.forEach((i) => { notified[i.hash] = now; });

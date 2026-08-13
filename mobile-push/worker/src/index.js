@@ -46,8 +46,9 @@ async function addCard(env, code, patch) {
   const card = {
     id: crypto.randomUUID(),
     title: (patch.title || '').slice(0, 200) || 'Untitled',
-    body: (patch.body || '').slice(0, 2000),
+    body: (patch.body || '').slice(0, 4000),
     url: patch.url || '',
+    context: (patch.context || '').slice(0, 200),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
     createdAt: now,
     updatedAt: now
@@ -119,7 +120,6 @@ export default {
           return json({ ok: false, error: 'That phone unsubscribed or the pairing expired — pair again.' }, 410);
         }
         if (!res.ok) return json({ ok: false, error: 'Push service refused (' + res.status + ').' }, 502);
-        await addCard(env, code, { title: title, body: body, url: pushUrl, column: 'inbox' });
         return json({ ok: true });
       } catch (e) {
         return json({ ok: false, error: String((e && e.message) || e) }, 502);
