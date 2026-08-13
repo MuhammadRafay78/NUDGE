@@ -4,10 +4,14 @@ Relays the extension's tag / follow-up / "more waiting" notifications to a phone
 over [Web Push](https://developer.mozilla.org/en-US/docs/Web/API/Push_API), since a
 browser extension has no way to reach a device directly. Two pieces:
 
-- **This server** — a small Express app. It holds nothing but push subscriptions,
-  keyed by a random pairing code. `POST /api/notify` is what the extension calls.
-- **A pairing page** (`public/`) — a PWA you open on your phone once, add to your
-  Home Screen, and it hands you an 8-character pairing code.
+- **A server** that holds nothing but push subscriptions, keyed by a random
+  pairing code. `POST /api/notify` is what the extension calls. Two interchangeable
+  backends live in this repo — pick one:
+  - `server.js` (this directory) — plain Node/Express, run it yourself anywhere.
+  - `worker/` — the same API on Cloudflare Workers, no server to babysit.
+- **A pairing page** (`public/`, shared by both backends) — a PWA you open on
+  your phone once, add to your Home Screen, and it hands you an 8-character
+  pairing code.
 
 ## iOS requirement — read this first
 
@@ -17,7 +21,9 @@ created from a normal Safari tab will not receive anything. The pairing page
 enforces this — it won't offer the "Enable notifications" button until you're
 running it from the Home Screen icon.
 
-## 1. Set up
+## Option A — Node/Express, self-hosted
+
+### 1. Set up
 
 ```bash
 cd mobile-push
@@ -31,7 +37,7 @@ push services use it to contact you if something's misbehaving. Generate the
 keys once and keep them; if you regenerate them, every already-paired phone
 has to re-pair.
 
-## 2. Run it
+### 2. Run it
 
 ```bash
 npm start
@@ -53,20 +59,79 @@ Subscriptions are stored in `subscriptions.json` next to `server.js`. That's
 fine for personal use (a handful of paired phones); it's flat-file storage,
 not a database, so plan accordingly if this ever needs to scale past that.
 
-## 3. Pair your phone
+## Option B — Cloudflare Workers
 
-1. Open the server's URL in Safari on the iPhone.
+`worker/` is the same API (`/api/vapid-public-key`, `/api/register`, `/api/notify`,
+`/api/unpair`) and the same pairing page, running as a Cloudflare Worker instead
+of an Express server — no box to keep running, no `subscriptions.json` file (it
+uses Workers KV instead). It uses the real [`web-push`](https://www.npmjs.com/package/web-push)
+npm package for the actual encryption/VAPID signing (correct RFC 8291 `aes128gcm`,
+same as Option A) via Workers' `node:crypto` support, and only swaps out the final
+delivery step for `fetch()` since Workers doesn't ship `web-push`'s Node HTTP client.
+
+### 1. KV namespace
+
+`wrangler.toml` already points at a KV namespace (`nudge-mobile-push`,
+id `133acdb9e60b40b29521ca4ed29de7b9`) created ahead of time. If that's not
+your Cloudflare account, or you'd rather use your own, create your own and
+swap the `id` in `wrangler.toml`'s `[[kv_namespaces]]` block:
+
+```bash
+cd mobile-push/worker
+npm install
+npx wrangler login                      # once, opens a browser
+npx wrangler kv namespace create nudge-mobile-push
+```
+
+### 2. Generate VAPID keys and set them as secrets
+
+```bash
+npm run generate-vapid                  # prints a key pair (same format as Option A)
+npx wrangler secret put VAPID_PUBLIC_KEY
+npx wrangler secret put VAPID_PRIVATE_KEY
+npx wrangler secret put VAPID_SUBJECT    # a mailto: address or https:// URL
+```
+
+### 3. Deploy
+
+```bash
+npx wrangler deploy
+```
+
+Wrangler prints the `*.workers.dev` HTTPS URL — that's what you open on the
+phone and paste into the extension's Settings.
+
+### Local testing before you deploy
+
+```bash
+cd mobile-push/worker
+cat > .dev.vars <<'EOF'
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:you@example.com
+EOF
+npx wrangler dev --local
+```
+
+`--local` runs entirely against a local KV emulation — nothing touches your
+real Cloudflare account until you `wrangler deploy`. `.dev.vars` is
+git-ignored; never commit real keys to it.
+
+## Pair your phone
+
+1. Open your server's HTTPS URL in Safari on the iPhone (from Option A's
+   hosting URL, or the `*.workers.dev` URL Option B's `wrangler deploy` printed).
 2. Share → **Add to Home Screen**.
 3. Open **Nudge** from the Home Screen icon (not from Safari).
 4. Tap **Enable notifications** and allow the permission prompt.
 5. It shows an 8-character pairing code — that's the phone's, permanent
    until you unpair.
 
-## 4. Point the extension at it
+## Point the extension at it
 
 In the extension: **Settings → Mobile notifications**
-- Server address: the HTTPS URL from step 2 above
-- Pairing code: the code from step 3
+- Server address: your deployed server's HTTPS URL
+- Pairing code: the code from pairing your phone, above
 - Turn on **"Also notify my phone"**
 - **Send a test one** to confirm the round trip
 

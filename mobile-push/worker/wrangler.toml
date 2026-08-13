@@ -1,0 +1,17 @@
+name = "nudge-mobile-push"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "../public"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "PUSH_KV"
+id = "133acdb9e60b40b29521ca4ed29de7b9"
+
+# Secrets — do not put real values here. Set with:
+#   wrangler secret put VAPID_PUBLIC_KEY
+#   wrangler secret put VAPID_PRIVATE_KEY
+#   wrangler secret put VAPID_SUBJECT
