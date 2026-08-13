@@ -49,6 +49,7 @@ async function addCard(env, code, patch) {
     body: (patch.body || '').slice(0, 4000),
     url: patch.url || '',
     context: (patch.context || '').slice(0, 200),
+    due: (patch.due || '').slice(0, 40),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
     createdAt: now,
     updatedAt: now

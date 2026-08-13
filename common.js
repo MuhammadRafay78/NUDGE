@@ -2670,7 +2670,7 @@ var QA = (function () {
     return data.cards || [];
   }
 
-  async function createCard(title, body, url, column, context) {
+  async function createCard(title, body, url, column, context, due) {
     const cx = await boardBase();
     if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
     const { data } = await boardApi('/api/cards', {
@@ -2678,7 +2678,7 @@ var QA = (function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code: cx.code, title: title, body: body || '', url: url || '',
-        column: column || 'inbox', context: context || ''
+        column: column || 'inbox', context: context || '', due: due || ''
       })
     });
     return data.card;
@@ -2686,9 +2686,9 @@ var QA = (function () {
 
   /* Fire-and-forget board logging: a missing/misconfigured server should
      never block the caller or throw, same spirit as pushToPhone. */
-  async function fileCard(title, body, url, context) {
+  async function fileCard(title, body, url, context, due) {
     try {
-      await createCard(title, body, url, 'inbox', context);
+      await createCard(title, body, url, 'inbox', context, due);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
