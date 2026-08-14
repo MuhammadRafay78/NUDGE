@@ -41,16 +41,17 @@ function itemHtml(card) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open the real card on trello.com">Trello &#8599;</a>'
     : '';
-  const options = QA.BOARD_COLUMNS.map((c) =>
-    '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
-  ).join('');
   const body = card.body || '';
   const long = body.length > LONG_BODY;
   const isOpen = expanded.has(card.id);
   const canReply = !!card.cardId;
   const histOpen = historyOpen.has(card.id);
   return (
+    /* draggable="true" is the only way to move a card between columns now —
+       the handle is just a visual cue for that, grabbing anywhere else on
+       the card (that isn't itself a button/link) works exactly the same. */
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
+      '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
       '<div class="t">' + esc(card.title) + '</div>' +
       (card.context ? '<div class="ctx">' + esc(card.context) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
@@ -59,10 +60,11 @@ function itemHtml(card) {
       (canReply ? reactRowHtml() : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
-        (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide' : 'Open card') + '</button>' : '') +
-        trelloLink +
-        (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
-        '<select class="move">' + options + '</select>' +
+        '<div class="acts">' +
+          (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide' : 'Open card') + '</button>' : '') +
+          (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
+          trelloLink +
+        '</div>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
       (canReply && histOpen ? historyHtml(card) : '') +
@@ -81,32 +83,52 @@ function reactRowHtml() {
   return '<div class="react">' + btns + '<span class="rnote" data-role="rstatus"></span></div>';
 }
 
-/* The card's full comment feed, expanded inline — "Comments & activity" without
-   leaving the board. Each comment gets its own reactions and a Reply link that
-   pre-fills @ whoever wrote THAT comment, not just the card's original tagger. */
+/* The whole card, expanded inline — the same "open it and see everything" feel
+   as clicking a card open in Trello itself, without leaving the board:
+   description, checklist progress, then the full comment feed. Each comment
+   gets its own reactions and a Reply link that pre-fills @ whoever wrote THAT
+   comment, not just the card's original tagger. */
 function historyHtml(card) {
   const cache = historyCache[card.id];
   if (!cache || cache.loading) return '<div class="hist"><div class="hist-status">Loading…</div></div>';
-  if (!cache.ok) return '<div class="hist"><div class="hist-status bad">' + esc(cache.error || 'Could not load comments.') + '</div></div>';
-  if (!cache.comments.length) return '<div class="hist"><div class="hist-status">No comments yet on this card.</div></div>';
-  const rows = cache.comments.map((c, i) => {
-    const when = c.at ? QA.ago(c.at) : '';
-    const who = c.byName || c.by || 'Someone';
-    const reactBtns = QA.REACTIONS.map((r) =>
-      '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
-    ).join('');
-    return (
-      '<div class="hist-item" data-idx="' + i + '">' +
-        '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
-        '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
-        '<div class="hist-acts">' + reactBtns +
-          '<button class="hist-reply-btn">Reply</button>' +
-          '<span class="rnote"></span>' +
-        '</div>' +
+  if (!cache.ok) return '<div class="hist"><div class="hist-status bad">' + esc(cache.error || 'Could not load this card.') + '</div></div>';
+
+  const summary = [];
+  if (cache.desc) summary.push('<div class="hist-desc">' + esc(cache.desc) + '</div>');
+  if (cache.checklist && cache.checklist.length) {
+    const done = cache.checklist.filter((it) => it.done).length;
+    const openItems = cache.checklist.filter((it) => !it.done)
+      .map((it) => '<li>' + esc(it.name) + '</li>').join('');
+    summary.push(
+      '<div class="hist-checklist">' +
+        '<div class="hist-checklist-n">Checklist &middot; ' + done + '/' + cache.checklist.length + ' done</div>' +
+        (openItems ? '<ul>' + openItems + '</ul>' : '') +
       '</div>'
     );
-  }).join('');
-  return '<div class="hist">' + rows + '</div>';
+  }
+
+  const comments = cache.comments || [];
+  const rows = comments.length
+    ? comments.map((c, i) => {
+        const when = c.at ? QA.ago(c.at) : '';
+        const who = c.byName || c.by || 'Someone';
+        const reactBtns = QA.REACTIONS.map((r) =>
+          '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
+        ).join('');
+        return (
+          '<div class="hist-item" data-idx="' + i + '">' +
+            '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
+            '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
+            '<div class="hist-acts">' + reactBtns +
+              '<button class="hist-reply-btn">Reply</button>' +
+              '<span class="rnote"></span>' +
+            '</div>' +
+          '</div>'
+        );
+      }).join('')
+    : '<div class="hist-status">No comments yet on this card.</div>';
+
+  return '<div class="hist">' + summary.join('') + rows + '</div>';
 }
 
 function replyBoxHtml(card) {
@@ -136,9 +158,12 @@ async function loadHistory(id) {
   if (!card || !card.cardId) return;
   historyCache[id] = { loading: true };
   render(Object.values(cardsById));
-  const res = await QA.cardCommentsFor(card.cardId);
+  const res = await QA.cardWholeFor(card.cardId);
   if (res && res.ok) {
-    historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+    historyCache[id] = {
+      ok: true, desc: res.desc || '', checklist: res.checklist || [],
+      comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0))
+    };
   } else {
     historyCache[id] = {
       ok: false,
@@ -168,17 +193,6 @@ function render(cards) {
     if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
 }
-
-boardEl.addEventListener('change', async (e) => {
-  if (!e.target.classList.contains('move')) return;
-  const id = e.target.closest('.item').dataset.id;
-  try {
-    await QA.moveCard(id, e.target.value);
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not move: ' + err.message;
-  }
-});
 
 /* ---------- reply, including @mention autocomplete ---------- */
 
