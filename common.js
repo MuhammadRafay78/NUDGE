@@ -1562,7 +1562,12 @@ var QA = (function () {
         text: body.length > MAX_SNIPPET ? body.slice(0, MAX_SNIPPET) + '…' : body,
         actor: n.actor,
         actorUser: n.actorUser || '',
-        cardId: n.cardId || '',
+        /* Trello's notification payload doesn't always carry the card's internal
+           id even when it carries everything else about the card (name, list,
+           board) — shortLink is the reliable one (it's what "Open card" already
+           depends on), and Trello's card-scoped API endpoints accept it in place
+           of the internal id, so it's a safe fallback rather than a workaround. */
+        cardId: n.cardId || n.shortLink || '',
         actionId: n.actionId || '',
         boardId: n.boardId || '',
         cardName: n.cardName || '',
