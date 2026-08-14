@@ -152,16 +152,25 @@ app.post('/api/cards', (req, res) => {
 
 app.patch('/api/cards/:id', (req, res) => {
   const code = String((req.body && req.body.code) || '').toUpperCase();
-  const column = req.body && req.body.column;
+  const body = req.body || {};
   if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
-  if (!COLUMNS.includes(column)) return res.status(400).json({ ok: false, error: 'Invalid column.' });
+  if (body.column !== undefined && !COLUMNS.includes(body.column)) {
+    return res.status(400).json({ ok: false, error: 'Invalid column.' });
+  }
 
   const boards = loadBoards();
   const cards = boards[code] || [];
   const card = cards.find((c) => c.id === req.params.id);
   if (!card) return res.status(404).json({ ok: false, error: 'Unknown card.' });
 
-  card.column = column;
+  /* only touches fields actually present in the request — e.g. a backfill
+     pass sends {context, due, cardId} without column, a drag/drop sends
+     {column} alone */
+  if (body.column !== undefined) card.column = body.column;
+  if (body.context !== undefined) card.context = String(body.context).slice(0, 200);
+  if (body.due !== undefined) card.due = String(body.due).slice(0, 40);
+  if (body.cardId !== undefined) card.cardId = String(body.cardId).slice(0, 60);
+  if (body.actorUser !== undefined) card.actorUser = String(body.actorUser).slice(0, 60);
   card.updatedAt = Date.now();
   saveBoards(boards);
   res.json({ ok: true, card: card });
