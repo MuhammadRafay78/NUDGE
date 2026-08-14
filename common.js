@@ -2770,6 +2770,19 @@ var QA = (function () {
     return data.card;
   }
 
+  /* general-purpose card edit — patch is any subset of
+     {column, context, due, cardId, actorUser}. Used by the board's
+     backfill pass to fill in fields an older card was filed without. */
+  async function updateCard(id, patch) {
+    const cx = await boardBase();
+    const { data } = await boardApi('/api/cards/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ code: cx.code }, patch || {}))
+    });
+    return data.card;
+  }
+
   async function deleteCard(id) {
     const cx = await boardBase();
     await boardApi('/api/cards/' + encodeURIComponent(id), {
@@ -3959,7 +3972,7 @@ var QA = (function () {
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getPush, setPush, pushToPhone,
-    BOARD_COLUMNS, fetchCards, createCard, fileCard, moveCard, deleteCard,
+    BOARD_COLUMNS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

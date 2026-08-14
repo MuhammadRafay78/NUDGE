@@ -147,15 +147,23 @@ export default {
     if (cardMatch && request.method === 'PATCH') {
       const payload = await request.json().catch(() => ({}));
       const code = String(payload.code || '').toUpperCase();
-      const column = payload.column;
       if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
-      if (!COLUMNS.includes(column)) return json({ ok: false, error: 'Invalid column.' }, 400);
+      if (payload.column !== undefined && !COLUMNS.includes(payload.column)) {
+        return json({ ok: false, error: 'Invalid column.' }, 400);
+      }
 
       const cards = await loadBoard(env, code);
       const card = cards.find((c) => c.id === cardMatch[1]);
       if (!card) return json({ ok: false, error: 'Unknown card.' }, 404);
 
-      card.column = column;
+      /* only touches fields actually present in the request — e.g. a backfill
+         pass sends {context, due, cardId} without column, a drag/drop sends
+         {column} alone */
+      if (payload.column !== undefined) card.column = payload.column;
+      if (payload.context !== undefined) card.context = String(payload.context).slice(0, 200);
+      if (payload.due !== undefined) card.due = String(payload.due).slice(0, 40);
+      if (payload.cardId !== undefined) card.cardId = String(payload.cardId).slice(0, 60);
+      if (payload.actorUser !== undefined) card.actorUser = String(payload.actorUser).slice(0, 60);
       card.updatedAt = Date.now();
       await saveBoard(env, code, cards);
       return json({ ok: true, card: card });

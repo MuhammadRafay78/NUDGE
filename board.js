@@ -5,6 +5,7 @@ const statusEl = document.getElementById('status');
 const warnEl = document.getElementById('notConfigured');
 const newTitle = document.getElementById('newTitle');
 const addBtn = document.getElementById('addBtn');
+const backfillBtn = document.getElementById('backfillBtn');
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -329,6 +330,48 @@ addBtn.addEventListener('click', async () => {
   }
 });
 newTitle.addEventListener('keydown', (e) => { if (e.key === 'Enter') addBtn.click(); });
+
+/* ---------- backfill: fill in client name + due date for cards filed
+   before that worked reliably. Needs an open Trello tab, same as the
+   automatic per-notification enrichment. ---------- */
+
+function shortLinkFromUrl(url) {
+  const m = /trello\.com\/c\/([^/?#]+)/.exec(url || '');
+  return m ? m[1] : '';
+}
+
+backfillBtn.addEventListener('click', async () => {
+  const targets = Object.values(cardsById).filter((c) => !c.cardId && shortLinkFromUrl(c.url));
+  if (!targets.length) {
+    statusEl.textContent = 'Nothing to backfill — every card either has this already or has no Trello card to look up.';
+    return;
+  }
+  backfillBtn.disabled = true;
+  let done = 0;
+  let failed = 0;
+  for (const card of targets) {
+    backfillBtn.textContent = 'Backfilling ' + (done + failed + 1) + ' of ' + targets.length + '…';
+    const shortLink = shortLinkFromUrl(card.url);
+    try {
+      const got = await QA.cardDetailsFor(shortLink);
+      if (!got || !got.ok) { failed++; continue; }
+      const lab = got.due ? QA.dueLabel(got.due, got.dueComplete) : null;
+      await QA.updateCard(card.id, {
+        cardId: shortLink,
+        context: got.name || card.context || '',
+        due: lab ? lab.text : (card.due || '')
+      });
+      done++;
+    } catch (e) {
+      failed++;
+    }
+  }
+  backfillBtn.textContent = 'Backfill details';
+  backfillBtn.disabled = false;
+  await load();   // refresh the board first — load() sets its own status text, so...
+  statusEl.textContent = 'Backfilled ' + done + ' of ' + targets.length +
+    (failed ? ' (' + failed + ' failed — needs an open Trello tab)' : '') + '.';   // ...overwrite it with the fuller result
+});
 
 async function load() {
   if (dragging) return;
