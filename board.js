@@ -24,6 +24,14 @@ let dragging = false;         // suppress auto-refresh mid-drag so the drop targ
 let cardsById = {};            // last-rendered cards, for the reply box's cardId/actorUser
 let replyingId = null;         // which card's reply box is open — suppresses auto-refresh too
 const peopleCache = {};        // cardId -> [{username, fullName}], fetched once per open
+const historyOpen = new Set();   // card ids currently showing the comments/activity panel
+const historyCache = {};         // card id -> { loading } | { ok:true, comments } | { ok:false, error }
+const replyDefaultUser = {};     // card id -> username to @mention, when replying from a specific
+                                  // history comment instead of the card's original tagger
+
+function defaultReplyUser(card) {
+  return replyDefaultUser[card.id] || card.actorUser || '';
+}
 
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Open &rarr;</a>' : '';
@@ -34,6 +42,7 @@ function itemHtml(card) {
   const long = body.length > LONG_BODY;
   const isOpen = expanded.has(card.id);
   const canReply = !!card.cardId;
+  const histOpen = historyOpen.has(card.id);
   return (
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<div class="t">' + esc(card.title) + '</div>' +
@@ -41,23 +50,65 @@ function itemHtml(card) {
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
+      (canReply ? reactRowHtml() : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
+        (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide comments' : 'Comments &amp; activity') + '</button>' : '') +
         (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
         '<select class="move">' + options + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
+      (canReply && histOpen ? historyHtml(card) : '') +
       (replyingId === card.id ? replyBoxHtml(card) : '') +
     '</div>'
   );
+}
+
+/* Reactions on the card's own tagged comment — mirrors the popup's react row.
+   Matching happens by comment text (see QA.reactToMention), so this needs no
+   action id up front. */
+function reactRowHtml() {
+  const btns = QA.REACTIONS.map((r) =>
+    '<button class="emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + ' — react on this comment in Trello">' + r.emoji + '</button>'
+  ).join('');
+  return '<div class="react">' + btns + '<span class="rnote" data-role="rstatus"></span></div>';
+}
+
+/* The card's full comment feed, expanded inline — "Comments & activity" without
+   leaving the board. Each comment gets its own reactions and a Reply link that
+   pre-fills @ whoever wrote THAT comment, not just the card's original tagger. */
+function historyHtml(card) {
+  const cache = historyCache[card.id];
+  if (!cache || cache.loading) return '<div class="hist"><div class="hist-status">Loading…</div></div>';
+  if (!cache.ok) return '<div class="hist"><div class="hist-status bad">' + esc(cache.error || 'Could not load comments.') + '</div></div>';
+  if (!cache.comments.length) return '<div class="hist"><div class="hist-status">No comments yet on this card.</div></div>';
+  const rows = cache.comments.map((c, i) => {
+    const when = c.at ? QA.ago(c.at) : '';
+    const who = c.byName || c.by || 'Someone';
+    const reactBtns = QA.REACTIONS.map((r) =>
+      '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
+    ).join('');
+    return (
+      '<div class="hist-item" data-idx="' + i + '">' +
+        '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
+        '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
+        '<div class="hist-acts">' + reactBtns +
+          '<button class="hist-reply-btn">Reply</button>' +
+          '<span class="rnote"></span>' +
+        '</div>' +
+      '</div>'
+    );
+  }).join('');
+  return '<div class="hist">' + rows + '</div>';
 }
 
 function replyBoxHtml(card) {
   const quick = QA.QUICK_REPLIES.map((q) =>
     '<button class="chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'
   ).join('');
-  const defaultText = card.actorUser ? '@' + card.actorUser + ' ' : '';
+  const defaultUser = defaultReplyUser(card);
+  const defaultText = defaultUser ? '@' + defaultUser + ' ' : '';
   return (
     '<div class="reply">' +
       '<div class="quick">' + quick + '</div>' +
@@ -72,6 +123,23 @@ function replyBoxHtml(card) {
       '</div>' +
     '</div>'
   );
+}
+
+async function loadHistory(id) {
+  const card = cardsById[id];
+  if (!card || !card.cardId) return;
+  historyCache[id] = { loading: true };
+  render(Object.values(cardsById));
+  const res = await QA.cardCommentsFor(card.cardId);
+  if (res && res.ok) {
+    historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+  } else {
+    historyCache[id] = {
+      ok: false,
+      error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Needs an open Trello tab.')
+    };
+  }
+  if (historyOpen.has(id)) render(Object.values(cardsById));
 }
 
 function render(cards) {
@@ -159,7 +227,7 @@ async function sendReply(item, card) {
   const sendBtn = item.querySelector('.send-reply');
   const cancelBtn = item.querySelector('.cancel-reply');
   const text = (ta.value || '').trim();
-  if (!text || text === '@' + (card.actorUser || '')) { ta.focus(); return; }
+  if (!text || text === '@' + defaultReplyUser(card)) { ta.focus(); return; }
   sendBtn.disabled = true;
   cancelBtn.disabled = true;
   status.className = 'reply-status';
@@ -168,6 +236,8 @@ async function sendReply(item, card) {
   if (res && res.ok) {
     status.textContent = 'Sent';
     replyingId = null;
+    delete replyDefaultUser[card.id];
+    if (historyOpen.has(card.id)) { delete historyCache[card.id]; loadHistory(card.id); }
     try { await QA.moveCard(card.id, 'done'); } catch (e) {}
     load();
   } else {
@@ -176,6 +246,46 @@ async function sendReply(item, card) {
     status.className = 'reply-status bad';
     status.textContent = QA.replyErrorMessage(res);
   }
+}
+
+/* One reaction click, on either the card's own tagged comment (.emo alone) or
+   a specific comment inside the expanded history (.hist-emo, matched by index
+   into that card's cached comment feed). */
+async function handleReactClick(e) {
+  const item = e.target.closest('.item');
+  const card = cardsById[item.dataset.id];
+  if (!card) return;
+  const r = QA.REACTIONS.filter((x) => x.emoji === e.target.dataset.emoji)[0];
+  if (!r) return;
+
+  let target;
+  let scope;
+  if (e.target.classList.contains('hist-emo')) {
+    const idx = Number(e.target.closest('.hist-item').dataset.idx);
+    const cache = historyCache[card.id];
+    const c = cache && cache.ok && cache.comments[idx];
+    if (!c) return;
+    target = { cardId: card.cardId, text: c.text, actorUser: c.by };
+    scope = e.target.closest('.hist-acts');
+  } else {
+    target = { cardId: card.cardId, text: card.body || card.title || '', actorUser: card.actorUser };
+    scope = e.target.closest('.react');
+  }
+
+  const note = scope.querySelector('.rnote');
+  scope.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  note.className = 'rnote';
+  note.textContent = 'Reacting…';
+  const res = await QA.reactToMention(target, r);
+  scope.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  if (!res || !res.ok) {
+    note.className = 'rnote bad';
+    note.textContent = QA.reactErrorMessage(res);
+    return;
+  }
+  e.target.classList.add('on');
+  note.className = 'rnote ok';
+  note.textContent = res.already ? r.emoji + ' already there' : r.emoji + ' added';
 }
 
 boardEl.addEventListener('click', async (e) => {
@@ -188,13 +298,50 @@ boardEl.addEventListener('click', async (e) => {
     return;
   }
 
+  if (e.target.classList.contains('emo')) {
+    await handleReactClick(e);
+    return;
+  }
+
+  if (e.target.classList.contains('hist-btn')) {
+    const id = e.target.closest('.item').dataset.id;
+    if (historyOpen.has(id)) {
+      historyOpen.delete(id);
+      render(Object.values(cardsById));
+    } else {
+      historyOpen.add(id);
+      delete historyCache[id];   // always fetch fresh on open, so a just-sent reply shows up
+      render(Object.values(cardsById));
+      loadHistory(id);
+    }
+    return;
+  }
+
+  if (e.target.classList.contains('hist-reply-btn')) {
+    const item = e.target.closest('.item');
+    const id = item.dataset.id;
+    const idx = Number(e.target.closest('.hist-item').dataset.idx);
+    const cache = historyCache[id];
+    const c = cache && cache.ok && cache.comments[idx];
+    replyDefaultUser[id] = (c && c.by) || '';
+    replyingId = id;
+    render(Object.values(cardsById));
+    return;
+  }
+
   if (e.target.classList.contains('reply-btn')) {
     const id = e.target.closest('.item').dataset.id;
-    replyingId = replyingId === id ? null : id;
+    if (replyingId === id) {
+      replyingId = null;
+    } else {
+      replyingId = id;
+      delete replyDefaultUser[id];   // opened from the card itself — default to the original tagger
+    }
     render(Object.values(cardsById));
     return;
   }
   if (e.target.classList.contains('cancel-reply')) {
+    delete replyDefaultUser[replyingId];
     replyingId = null;
     render(Object.values(cardsById));
     return;
@@ -208,7 +355,8 @@ boardEl.addEventListener('click', async (e) => {
     const item = e.target.closest('.item');
     const card = cardsById[item.dataset.id];
     const ta = item.querySelector('.reply-in');
-    const at = card.actorUser ? '@' + card.actorUser + ' ' : '';
+    const user = defaultReplyUser(card);
+    const at = user ? '@' + user + ' ' : '';
     ta.value = at + e.target.dataset.q;
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -387,11 +535,13 @@ async function load() {
   }
 }
 
-/* the passive/periodic refresh skips while a reply is open, so a poll never
-   wipes text someone's mid-typing; an explicit action (move/delete/drop/send)
-   on any card still refreshes immediately via its own load() call above */
+/* the passive/periodic refresh skips while a reply is open (so a poll never wipes
+   text someone's mid-typing) or while a comment history panel is open (so a poll
+   never resets someone's scroll position mid-read); an explicit action
+   (move/delete/drop/send/expand) on any card still refreshes immediately via its
+   own load() or loadHistory() call */
 function passiveRefresh() {
-  if (document.visibilityState === 'visible' && !replyingId) load();
+  if (document.visibilityState === 'visible' && !replyingId && !historyOpen.size) load();
 }
 
 load();

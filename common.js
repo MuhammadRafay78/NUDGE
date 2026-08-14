@@ -1332,6 +1332,14 @@ var QA = (function () {
     return inTrelloTab(fetchCardDetails, [cardId]);
   }
 
+  /* The full comment feed for one card — what the board's "Comments & activity"
+     panel expands into. Same "needs an open Trello tab" constraint as the other
+     card-scoped lookups above. */
+  async function cardCommentsFor(cardId) {
+    if (!cardId) return { ok: false, error: 'no card' };
+    return inTrelloTab(fetchCardComments, [cardId]);
+  }
+
   async function reactToMention(item, reaction) {
     const r = typeof reaction === 'string'
       ? REACTIONS.filter(function (x) { return x.emoji === reaction || x.shortName === reaction; })[0]
@@ -3956,7 +3964,7 @@ var QA = (function () {
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardCommentsFor, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,
