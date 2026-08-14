@@ -34,7 +34,13 @@ function defaultReplyUser(card) {
 }
 
 function itemHtml(card) {
-  const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Open &rarr;</a>' : '';
+  /* A separate, clearly-labelled escape hatch to the real Trello page — kept
+     small and secondary, since "Open card" below now stays on the board
+     (it used to be the one that dropped you onto trello.com, which is
+     exactly the surprise the comments/activity panel was built to avoid). */
+  const trelloLink = card.url
+    ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open the real card on trello.com">Trello &#8599;</a>'
+    : '';
   const options = QA.BOARD_COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
@@ -53,8 +59,8 @@ function itemHtml(card) {
       (canReply ? reactRowHtml() : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
-        openLink +
-        (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide comments' : 'Comments &amp; activity') + '</button>' : '') +
+        (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide' : 'Open card') + '</button>' : '') +
+        trelloLink +
         (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
         '<select class="move">' + options + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
