@@ -28,10 +28,15 @@
     .col h2 .n { color: var(--fg); font-weight: 700; }
     .empty { color: var(--muted); font-size: 12.5px; padding: 8px 6px; }
 
-    .item { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px;
-      cursor: grab; min-width: 0; }
+    .item { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 26px 10px 11px; margin-bottom: 8px; cursor: grab; min-width: 0; transition: border-color .1s, box-shadow .1s; }
+    .item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .item:active { cursor: grabbing; }
     .item.dragging { opacity: .4; }
-    .item .t { font-weight: 650; font-size: 13.5px; margin-bottom: 3px; overflow-wrap: anywhere; }
+    .item .handle { position: absolute; top: 8px; right: 6px; color: var(--muted); font-size: 13px;
+      line-height: 1; letter-spacing: -2px; user-select: none; opacity: .55; }
+    .item:hover .handle { opacity: 1; }
+    .item .t { font-weight: 650; font-size: 13.5px; margin-bottom: 3px; overflow-wrap: anywhere; padding-right: 10px; }
     .item .ctx { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px;
                  margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .item .due { display: inline-block; color: var(--accent); background: var(--accent-soft);
@@ -39,19 +44,31 @@
     .item .b { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
     .item .b.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
-    .item .row2 { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-    .item .when { color: var(--muted); font-size: 11px; flex: 1; }
-    .item a.open { color: var(--accent); font-size: 11.5px; text-decoration: none; }
-    .item .reply-btn { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 0; cursor: pointer; }
-    .item .hist-btn { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 0; cursor: pointer; }
+    .item .row2 { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+    .item .when { color: var(--muted); font-size: 11px; flex: 1 0 auto; }
+    .item .acts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .item .acts .hist-btn, .item .acts .reply-btn {
+      color: var(--fg); font-size: 11.5px; font-weight: 550; background: var(--card);
+      border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer;
+      transition: background .1s, border-color .1s;
+    }
+    .item .acts .hist-btn:hover, .item .acts .reply-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .item a.open { color: var(--muted); font-size: 11px; text-decoration: none; align-self: center; }
+    .item a.open:hover { color: var(--accent); }
     .item .reply { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
     .item .reply-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 
     .item .react { margin-top: 6px; }
     .item .hist { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
-      display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow-y: auto; }
+      display: flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto; }
     .item .hist-status { color: var(--muted); font-size: 12px; }
     .item .hist-status.bad { color: var(--accent); }
+    .item .hist-desc { font-size: 12.5px; color: var(--fg); line-height: 1.4; white-space: pre-wrap;
+      overflow-wrap: anywhere; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .item .hist-checklist { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .item .hist-checklist-n { font-size: 11.5px; font-weight: 650; color: var(--muted); margin-bottom: 4px; }
+    .item .hist-checklist ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--fg); }
+    .item .hist-checklist li { margin-bottom: 2px; }
     .item .hist-item { min-width: 0; }
     .item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
     .item .hist-meta b { color: var(--fg); font-weight: 650; }
@@ -60,9 +77,9 @@
     .item .hist-acts .hist-reply-btn { color: var(--accent); font-size: 11px; background: none; border: none;
       padding: 0 0 0 4px; cursor: pointer; }
     .item button.emo { font-size: 13px; padding: 2px 6px; }
-    .item select { font: inherit; font-size: 12px; padding: 3px 5px; border-radius: 6px;
-      border: 1px solid var(--line); background: var(--card); color: var(--fg); }
-    .item .del { color: var(--muted); background: none; border: none; font-size: 15px; padding: 0 2px; cursor: pointer; }
+    .item .del { color: var(--muted); background: none; border: none; font-size: 16px; line-height: 1;
+      padding: 2px 4px; cursor: pointer; border-radius: 5px; transition: color .1s, background .1s; }
+    .item .del:hover { color: var(--accent); background: var(--accent-soft); }
 
     .status { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
     .warn { color: var(--accent); font-size: 13px; margin-bottom: 10px; }
@@ -70,7 +87,7 @@
 </head>
 <body>
   <h1>Board</h1>
-  <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns, or use its dropdown.</p>
+  <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns to move it.</p>
 
   <div class="bar2">
     <input type="text" id="newTitle" placeholder="Start a card…" maxlength="200">

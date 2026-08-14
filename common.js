@@ -1332,12 +1332,55 @@ var QA = (function () {
     return inTrelloTab(fetchCardDetails, [cardId]);
   }
 
-  /* The full comment feed for one card — what the board's "Comments & activity"
-     panel expands into. Same "needs an open Trello tab" constraint as the other
-     card-scoped lookups above. */
-  async function cardCommentsFor(cardId) {
+  /* The whole card in one request — description, due, checklist progress and the
+     full comment feed — what the board's "Open card" panel expands into. This is
+     meant to read like the card itself, not just its comments, so it pulls
+     everything Trello's own card-detail view leads with. Same "needs an open
+     Trello tab" constraint as the other card-scoped lookups above. Injected, so
+     it must reference nothing outside itself. */
+  function fetchCardWhole(cardId) {
+    return (async () => {
+      try {
+        const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) +
+          '?fields=name,desc,due,dueComplete' +
+          '&checklists=all&checklist_fields=name&checkItem_fields=name,state' +
+          '&actions=commentCard&actions_limit=50&action_memberCreator_fields=username,fullName',
+          { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!res.ok) return { ok: false, status: res.status };
+        const j = await res.json();
+
+        const checklist = [];
+        (Array.isArray(j.checklists) ? j.checklists : []).forEach(function (cl) {
+          (cl.checkItems || []).forEach(function (it) {
+            checklist.push({ name: String(it.name || '').replace(/\s+/g, ' ').trim(), done: it.state === 'complete' });
+          });
+        });
+
+        const comments = (Array.isArray(j.actions) ? j.actions : [])
+          .filter(function (a) { return a && a.type === 'commentCard'; })
+          .map(function (a) {
+            return {
+              at: Date.parse((a && a.date) || '') || 0,
+              by: ((a && a.memberCreator && a.memberCreator.username) || '').toLowerCase(),
+              byName: (a && a.memberCreator && a.memberCreator.fullName) || '',
+              text: String((a && a.data && a.data.text) || '').replace(/\s+/g, ' ').trim()
+            };
+          });
+
+        return {
+          ok: true, name: j.name || '', desc: String(j.desc || '').trim(),
+          due: j.due || null, dueComplete: !!j.dueComplete,
+          checklist: checklist, comments: comments
+        };
+      } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+      }
+    })();
+  }
+
+  async function cardWholeFor(cardId) {
     if (!cardId) return { ok: false, error: 'no card' };
-    return inTrelloTab(fetchCardComments, [cardId]);
+    return inTrelloTab(fetchCardWhole, [cardId]);
   }
 
   async function reactToMention(item, reaction) {
@@ -3964,7 +4007,7 @@ var QA = (function () {
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardCommentsFor, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,
