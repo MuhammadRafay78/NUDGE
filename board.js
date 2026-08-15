@@ -46,14 +46,22 @@ function itemHtml(card) {
   const isOpen = expanded.has(card.id);
   const canReply = !!card.cardId;
   const histOpen = historyOpen.has(card.id);
+  /* The client/card name is what matters at a glance — lead with it. The
+     generic "X tagged you" line is demoted to a byline underneath (or, for a
+     hand-typed card with no client name yet, it's all there is, so it stays
+     the heading). */
+  const heading = card.context || card.title;
+  const byline = card.context ? card.title : '';
   return (
     /* draggable="true" is the only way to move a card between columns now —
        the handle is just a visual cue for that, grabbing anywhere else on
-       the card (that isn't itself a button/link) works exactly the same. */
+       the card (that isn't itself a button/link) works exactly the same.
+       Clicking anywhere on the card that isn't a control opens it — same as
+       clicking "Open card" — see the boardEl click handler below. */
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
-      '<div class="t">' + esc(card.title) + '</div>' +
-      (card.context ? '<div class="ctx">' + esc(card.context) + '</div>' : '') +
+      '<div class="t">' + esc(heading) + '</div>' +
+      (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
@@ -91,7 +99,10 @@ function reactRowHtml() {
 function historyHtml(card) {
   const cache = historyCache[card.id];
   if (!cache || cache.loading) return '<div class="hist"><div class="hist-status">Loading…</div></div>';
-  if (!cache.ok) return '<div class="hist"><div class="hist-status bad">' + esc(cache.error || 'Could not load this card.') + '</div></div>';
+  if (!cache.ok) {
+    return '<div class="hist"><div class="hist-status bad">&#9888; ' +
+      esc(cache.error || 'Could not load this card.') + '</div></div>';
+  }
 
   const summary = [];
   if (cache.desc) summary.push('<div class="hist-desc">' + esc(cache.desc) + '</div>');
@@ -153,6 +164,18 @@ function replyBoxHtml(card) {
   );
 }
 
+function toggleHistory(id) {
+  if (historyOpen.has(id)) {
+    historyOpen.delete(id);
+    render(Object.values(cardsById));
+  } else {
+    historyOpen.add(id);
+    delete historyCache[id];   // always fetch fresh on open, so a just-sent reply shows up
+    render(Object.values(cardsById));
+    loadHistory(id);
+  }
+}
+
 async function loadHistory(id) {
   const card = cardsById[id];
   if (!card || !card.cardId) return;
@@ -167,7 +190,7 @@ async function loadHistory(id) {
   } else {
     historyCache[id] = {
       ok: false,
-      error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Needs an open Trello tab.')
+      error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Needs an open Trello tab — open trello.com in another tab, then try again.')
     };
   }
   if (historyOpen.has(id)) render(Object.values(cardsById));
@@ -324,16 +347,7 @@ boardEl.addEventListener('click', async (e) => {
   }
 
   if (e.target.classList.contains('hist-btn')) {
-    const id = e.target.closest('.item').dataset.id;
-    if (historyOpen.has(id)) {
-      historyOpen.delete(id);
-      render(Object.values(cardsById));
-    } else {
-      historyOpen.add(id);
-      delete historyCache[id];   // always fetch fresh on open, so a just-sent reply shows up
-      render(Object.values(cardsById));
-      loadHistory(id);
-    }
+    toggleHistory(e.target.closest('.item').dataset.id);
     return;
   }
 
@@ -390,14 +404,29 @@ boardEl.addEventListener('click', async (e) => {
     return;
   }
 
-  if (!e.target.classList.contains('del')) return;
-  const id = e.target.closest('.item').dataset.id;
-  try {
-    await QA.deleteCard(id);
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not delete: ' + err.message;
+  if (e.target.classList.contains('del')) {
+    const id = e.target.closest('.item').dataset.id;
+    try {
+      await QA.deleteCard(id);
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not delete: ' + err.message;
+    }
+    return;
   }
+
+  /* Clicking the card itself — its title, context, due chip, body text, the
+     drag handle, blank padding — opens it, same as the "Open card" button.
+     Anything that's its own control (buttons/links/inputs above) already
+     returned by this point, and clicks inside an already-open history or
+     reply panel are left alone so reading/selecting that text doesn't
+     collapse it back. */
+  if (e.target.closest('.hist') || e.target.closest('.reply')) return;
+  const item = e.target.closest('.item');
+  const card = item && cardsById[item.dataset.id];
+  if (!card || !card.cardId) return;
+  if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
+  toggleHistory(item.dataset.id);
 });
 
 boardEl.addEventListener('mousedown', (e) => {

@@ -55,24 +55,27 @@
 
   .item {
     background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px 11px; margin-bottom: 8px;
+    padding: 11px 12px; margin-bottom: 8px;
   }
-  .item .t { font-weight: 650; font-size: 13.5px; margin-bottom: 3px; overflow-wrap: anywhere; }
-  .item .ctx { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px;
-               margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .t { font-weight: 700; font-size: 14.5px; margin-bottom: 2px; overflow-wrap: anywhere; }
+  .item .sub { color: var(--muted); font-size: 11px; margin-bottom: 5px; overflow: hidden;
+               text-overflow: ellipsis; white-space: nowrap; }
   .item .due { display: inline-block; color: var(--accent); background: var(--accent-soft);
                font-size: 10.5px; font-weight: 650; padding: 2px 7px; border-radius: 5px; margin-bottom: 6px; }
   .item .b { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
   .item .b.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
-  .item .meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-  .item .when { color: var(--muted); font-size: 11px; flex: 1; }
-  .item a.open { color: var(--accent); font-size: 11.5px; text-decoration: none; }
+  .item .meta { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .item .when { color: var(--muted); font-size: 11px; flex: 1 0 auto; }
+  .item a.open { color: var(--muted); font-size: 11px; text-decoration: none; }
+  .item a.open:active { color: var(--accent); }
   .item select {
-    font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 6px;
+    font: inherit; font-size: 12.5px; font-weight: 550; padding: 5px 7px; border-radius: 6px;
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
-  .item .del { color: var(--muted); background: none; border: none; font-size: 15px; padding: 0 2px; cursor: pointer; }
+  .item .del { color: var(--muted); background: none; border: none; font-size: 16px; line-height: 1;
+    padding: 3px 5px; cursor: pointer; border-radius: 5px; }
+  .item .del:active { color: var(--accent); background: var(--accent-soft); }
 
   .status { color: var(--muted); font-size: 13px; padding: 0 16px; }
 </style>
@@ -81,7 +84,7 @@
 <header>
   <a class="back" href="/">&larr; Back</a>
   <h1>Board</h1>
-  <p class="lede">Every tag lands in Inbox. Drag it forward as you work it.</p>
+  <p class="lede">Every tag lands in Inbox. Use the dropdown on a card to move it as you work it.</p>
 </header>
 
 <div class="addRow">
