@@ -66,13 +66,19 @@ function itemHtml(card) {
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
       (canReply ? reactRowHtml() : '') +
-      '<div class="row2">' +
-        '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
+      /* Action pills get their own row so they can wrap on a narrow card
+         without ever pulling "when"/delete along with them — those two stay
+         paired on a fixed, always-two-item row underneath (see .row2 below),
+         so delete never ends up stranded alone on its own line. */
+      (canReply || trelloLink ? (
         '<div class="acts">' +
           (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide' : 'Open card') + '</button>' : '') +
           (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
           trelloLink +
-        '</div>' +
+        '</div>'
+      ) : '') +
+      '<div class="row2">' +
+        '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
       (canReply && histOpen ? historyHtml(card) : '') +
