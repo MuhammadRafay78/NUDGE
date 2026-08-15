@@ -6,6 +6,8 @@ const warnEl = document.getElementById('notConfigured');
 const newTitle = document.getElementById('newTitle');
 const addBtn = document.getElementById('addBtn');
 const backfillBtn = document.getElementById('backfillBtn');
+const modalEl = document.getElementById('cardModal');
+const modalBoxEl = document.getElementById('cardModalBox');
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,16 +23,15 @@ function mentionToken(ta) {
 const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
 const expanded = new Set();   // card ids currently showing full text, survives a refresh
 let dragging = false;         // suppress auto-refresh mid-drag so the drop target doesn't vanish
-let cardsById = {};            // last-rendered cards, for the reply box's cardId/actorUser
-let replyingId = null;         // which card's reply box is open — suppresses auto-refresh too
+let cardsById = {};            // last-rendered cards
 const peopleCache = {};        // cardId -> [{username, fullName}], fetched once per open
-const historyOpen = new Set();   // card ids currently showing the comments/activity panel
+let modalCardId = null;          // which card's "Open card" modal is showing, or null
 const historyCache = {};         // card id -> { loading } | { ok:true, comments } | { ok:false, error }
-const replyDefaultUser = {};     // card id -> username to @mention, when replying from a specific
-                                  // history comment instead of the card's original tagger
-let replyDraft = null;           // live text of the open reply box — re-renders happen constantly
-                                  // (any move/delete/drop, even on a different card), and without
-                                  // this a half-typed reply would just vanish under you
+const replyDefaultUser = {};     // card id -> username to @mention, when replying to a specific comment
+                                  // instead of the card's original tagger
+let replyDraft = null;           // live text of the modal's reply box — the modal is a separate DOM
+                                  // tree from the board, so a board refresh never touches it, but the
+                                  // modal's own comment-list reload does rebuild it, hence tracking this
 
 function defaultReplyUser(card) {
   return replyDefaultUser[card.id] || card.actorUser || '';
@@ -38,9 +39,8 @@ function defaultReplyUser(card) {
 
 function itemHtml(card) {
   /* A separate, clearly-labelled escape hatch to the real Trello page — kept
-     small and secondary, since "Open card" below now stays on the board
-     (it used to be the one that dropped you onto trello.com, which is
-     exactly the surprise the comments/activity panel was built to avoid). */
+     small and secondary, since "Open card" opens the comment thread right
+     here instead of sending you to trello.com. */
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open the real card on trello.com">Trello &#8599;</a>'
     : '';
@@ -48,7 +48,6 @@ function itemHtml(card) {
   const long = body.length > LONG_BODY;
   const isOpen = expanded.has(card.id);
   const canReply = !!card.cardId;
-  const histOpen = historyOpen.has(card.id);
   /* The client/card name is what matters at a glance — lead with it. The
      generic "X tagged you" line is demoted to a byline underneath (or, for a
      hand-typed card with no client name yet, it's all there is, so it stays
@@ -71,12 +70,12 @@ function itemHtml(card) {
       (canReply ? reactRowHtml() : '') +
       /* Action pills get their own row so they can wrap on a narrow card
          without ever pulling "when"/delete along with them — those two stay
-         paired on a fixed, always-two-item row underneath (see .row2 below),
-         so delete never ends up stranded alone on its own line. */
+         paired on a fixed, always-two-item row underneath, so delete never
+         ends up stranded alone on its own line. */
       (canReply || trelloLink ? (
         '<div class="acts">' +
-          (canReply ? '<button class="hist-btn">' + (histOpen ? 'Hide' : 'Open card') + '</button>' : '') +
-          (canReply ? '<button class="reply-btn">' + (replyingId === card.id ? 'Cancel' : 'Reply') + '</button>' : '') +
+          (canReply ? '<button class="hist-btn">Open card</button>' : '') +
+          (canReply ? '<button class="reply-btn">Reply</button>' : '') +
           trelloLink +
         '</div>'
       ) : '') +
@@ -84,8 +83,6 @@ function itemHtml(card) {
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
-      (canReply && histOpen ? historyHtml(card) : '') +
-      (replyingId === card.id ? replyBoxHtml(card) : '') +
     '</div>'
   );
 }
@@ -100,115 +97,134 @@ function reactRowHtml() {
   return '<div class="react">' + btns + '<span class="rnote" data-role="rstatus"></span></div>';
 }
 
-/* The whole card, expanded inline — the same "open it and see everything" feel
-   as clicking a card open in Trello itself, without leaving the board:
-   description, checklist progress, then the full comment feed. Each comment
-   gets its own reactions and a Reply link that pre-fills @ whoever wrote THAT
-   comment, not just the card's original tagger. */
-function historyHtml(card) {
-  const cache = historyCache[card.id];
-  if (!cache || cache.loading) return '<div class="hist"><div class="hist-status">Loading…</div></div>';
-  if (!cache.ok) {
-    return '<div class="hist"><div class="hist-status bad">&#9888; ' +
-      esc(cache.error || 'Could not load this card.') + '</div></div>';
-  }
+/* ---------- "Open card" modal: just the comments, nothing else ----------
+   Trello's own card-open behavior — click a card, it opens on top of the
+   board, you read the thread and reply, close it, you're right back where
+   you were. No description, no checklist summary; those turned out to be
+   clutter nobody asked for. Only one modal exists at a time (there's only
+   ever one open card), which is also what lets the reply composer be a
+   single persistent piece of markup instead of one per card. */
 
-  const summary = [];
-  if (cache.desc) summary.push('<div class="hist-desc">' + esc(cache.desc) + '</div>');
-  if (cache.checklist && cache.checklist.length) {
-    const done = cache.checklist.filter((it) => it.done).length;
-    const openItems = cache.checklist.filter((it) => !it.done)
-      .map((it) => '<li>' + esc(it.name) + '</li>').join('');
-    summary.push(
-      '<div class="hist-checklist">' +
-        '<div class="hist-checklist-n">Checklist &middot; ' + done + '/' + cache.checklist.length + ' done</div>' +
-        (openItems ? '<ul>' + openItems + '</ul>' : '') +
-      '</div>'
-    );
-  }
-
-  const comments = cache.comments || [];
-  const rows = comments.length
-    ? comments.map((c, i) => {
-        const when = c.at ? QA.ago(c.at) : '';
-        const who = c.byName || c.by || 'Someone';
-        const reactBtns = QA.REACTIONS.map((r) =>
-          '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
-        ).join('');
-        return (
-          '<div class="hist-item" data-idx="' + i + '">' +
-            '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
-            '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
-            '<div class="hist-acts">' + reactBtns +
-              '<button class="hist-reply-btn">Reply</button>' +
-              '<span class="rnote"></span>' +
-            '</div>' +
-          '</div>'
-        );
-      }).join('')
-    : '<div class="hist-status">No comments yet on this card.</div>';
-
-  return '<div class="hist">' + summary.join('') + rows + '</div>';
+function modalCommentHtml(c, i) {
+  const when = c.at ? QA.ago(c.at) : '';
+  const who = c.byName || c.by || 'Someone';
+  const reactBtns = QA.REACTIONS.map((r) =>
+    '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
+  ).join('');
+  return (
+    '<div class="modal-item" data-idx="' + i + '">' +
+      '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
+      '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
+      '<div class="hist-acts">' + reactBtns +
+        '<button class="hist-reply-btn">Reply</button>' +
+        '<span class="rnote"></span>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
-function replyBoxHtml(card) {
+function composerHtml(card) {
   const quick = QA.QUICK_REPLIES.map((q) =>
     '<button class="chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'
   ).join('');
   const defaultUser = defaultReplyUser(card);
   const defaultText = replyDraft !== null ? replyDraft : (defaultUser ? '@' + defaultUser + ' ' : '');
   return (
-    '<div class="reply">' +
-      '<div class="quick">' + quick + '</div>' +
-      '<div class="reply-wrap">' +
-        '<textarea class="reply-in" rows="2" placeholder="Reply… type @ to tag someone">' + esc(defaultText) + '</textarea>' +
-        '<div class="mention-list" hidden></div>' +
-      '</div>' +
-      '<div class="reply-acts">' +
-        '<button class="btn go send-reply">Send reply</button>' +
-        '<button class="btn cancel-reply">Cancel</button>' +
-        '<span class="reply-status"></span>' +
-      '</div>' +
+    '<div class="quick">' + quick + '</div>' +
+    '<div class="reply-wrap">' +
+      '<textarea class="reply-in" rows="2" placeholder="Reply… type @ to tag someone">' + esc(defaultText) + '</textarea>' +
+      '<div class="mention-list" hidden></div>' +
+    '</div>' +
+    '<div class="reply-acts">' +
+      '<button class="btn go send-reply">Send reply</button>' +
+      '<span class="reply-status"></span>' +
     '</div>'
   );
 }
 
-function toggleHistory(id) {
-  if (historyOpen.has(id)) {
-    historyOpen.delete(id);
-    render(Object.values(cardsById));
+function modalHtml(card) {
+  const heading = card.context || card.title;
+  const byline = card.context ? card.title : '';
+  const trelloLink = card.url
+    ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>'
+    : '';
+  const cache = historyCache[card.id];
+
+  let body;
+  if (!cache || cache.loading) {
+    body = '<div class="modal-status">Loading…</div>';
+  } else if (!cache.ok) {
+    body = '<div class="modal-status bad">&#9888; ' + esc(cache.error || 'Could not load this card.') + '</div>';
   } else {
-    historyOpen.add(id);
-    delete historyCache[id];   // always fetch fresh on open, so a just-sent reply shows up
-    render(Object.values(cardsById));
-    loadHistory(id);
+    const comments = cache.comments || [];
+    body = comments.length
+      ? comments.map(modalCommentHtml).join('')
+      : '<div class="modal-status">No comments yet on this card.</div>';
+  }
+
+  return (
+    '<div class="modal-head">' +
+      '<button class="modal-close" title="Close">&times;</button>' +
+      '<div class="t">' + esc(heading) + '</div>' +
+      (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
+      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      trelloLink +
+    '</div>' +
+    '<div class="modal-body">' + body + '</div>' +
+    '<div class="modal-foot">' + composerHtml(card) + '</div>'
+  );
+}
+
+function renderModal(focusComposer) {
+  if (!modalCardId) { modalEl.hidden = true; modalBoxEl.innerHTML = ''; return; }
+  const card = cardsById[modalCardId];
+  if (!card) { closeModal(); return; }
+  modalBoxEl.innerHTML = modalHtml(card);
+  modalEl.hidden = false;
+  if (focusComposer) {
+    const ta = modalBoxEl.querySelector('.reply-in');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
 }
 
-async function loadHistory(id) {
+function openModal(id, focusComposer) {
+  modalCardId = id;
+  delete historyCache[id];   // always fetch fresh on open, so a just-sent reply shows up
+  historyCache[id] = { loading: true };
+  renderModal(focusComposer);   // paints the "Loading…" state and focuses the composer, once
+  loadHistory(id, focusComposer);
+}
+
+function closeModal() {
+  modalCardId = null;
+  replyDraft = null;
+  modalEl.hidden = true;
+  modalBoxEl.innerHTML = '';
+}
+
+/* focusComposer is threaded through so the final render (once the fetch
+   resolves) can re-focus the composer the same way the opening render did —
+   renderModal() rebuilds the DOM from scratch each time, which would
+   otherwise silently drop focus a few hundred ms after "Reply" was clicked. */
+async function loadHistory(id, focusComposer) {
   const card = cardsById[id];
   if (!card || !card.cardId) return;
-  historyCache[id] = { loading: true };
-  render(Object.values(cardsById));
   const res = await QA.cardWholeFor(card.cardId);
   if (res && res.ok) {
-    historyCache[id] = {
-      ok: true, desc: res.desc || '', checklist: res.checklist || [],
-      comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0))
-    };
+    historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
   } else {
     historyCache[id] = {
       ok: false,
       error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Needs an open Trello tab — open trello.com in another tab, then try again.')
     };
   }
-  if (historyOpen.has(id)) render(Object.values(cardsById));
+  if (modalCardId === id) renderModal(focusComposer);
 }
 
 function render(cards) {
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
-  if (replyingId && !cardsById[replyingId]) { replyingId = null; replyDraft = null; }   // card deleted elsewhere
+  if (modalCardId && !cardsById[modalCardId]) closeModal();   // card deleted elsewhere
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
     const items = cards.filter((c) => c.column === col.id);
@@ -219,22 +235,18 @@ function render(cards) {
       '</div>'
     );
   }).join('');
-
-  if (replyingId) {
-    const ta = boardEl.querySelector('.item[data-id="' + CSS.escape(replyingId) + '"] .reply-in');
-    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-  }
 }
 
-/* ---------- reply, including @mention autocomplete ---------- */
+/* ---------- reply, including @mention autocomplete — all modal-scoped,
+   since only one reply composer exists on the page at a time now ---------- */
 
-function closeMentionList(item) {
-  const list = item.querySelector('.mention-list');
+function closeMentionList() {
+  const list = modalBoxEl.querySelector('.mention-list');
   if (list) { list.hidden = true; list.innerHTML = ''; list.dataset.picks = ''; }
 }
 
-function drawMentionList(item, picks, sel) {
-  const list = item.querySelector('.mention-list');
+function drawMentionList(picks, sel) {
+  const list = modalBoxEl.querySelector('.mention-list');
   if (!list) return;
   list.innerHTML = picks.map((p, i) =>
     '<button class="mention-row' + (i === sel ? ' on' : '') + '" data-u="' + esc(p.username) + '">' +
@@ -253,7 +265,9 @@ async function peopleFor(cardId) {
   return peopleCache[cardId];
 }
 
-function insertMention(ta, item, username) {
+function insertMention(username) {
+  const ta = modalBoxEl.querySelector('.reply-in');
+  if (!ta) return;
   const tok = mentionToken(ta);
   const at = tok ? tok.start : (ta.selectionStart || 0);
   const before = ta.value.slice(0, at);
@@ -263,48 +277,46 @@ function insertMention(ta, item, username) {
   const pos = (before + '@' + username + ' ').length;
   ta.focus();
   ta.setSelectionRange(pos, pos);
-  closeMentionList(item);
+  closeMentionList();
 }
 
-async function maybeSuggest(ta, item, cardId) {
+async function maybeSuggest(ta, cardId) {
   const tok = mentionToken(ta);
-  if (!tok) { closeMentionList(item); return; }
+  if (!tok) { closeMentionList(); return; }
   const people = await peopleFor(cardId);
   const picks = QA.matchPeople(people, tok.q);
-  drawMentionList(item, picks, 0);
+  drawMentionList(picks, 0);
 }
 
-async function sendReply(item, card) {
-  const ta = item.querySelector('.reply-in');
-  const status = item.querySelector('.reply-status');
-  const sendBtn = item.querySelector('.send-reply');
-  const cancelBtn = item.querySelector('.cancel-reply');
+async function sendReply() {
+  const card = cardsById[modalCardId];
+  const ta = modalBoxEl.querySelector('.reply-in');
+  const status = modalBoxEl.querySelector('.reply-status');
+  const sendBtn = modalBoxEl.querySelector('.send-reply');
+  if (!card || !ta) return;
   const text = (ta.value || '').trim();
   if (!text || text === '@' + defaultReplyUser(card)) { ta.focus(); return; }
   sendBtn.disabled = true;
-  cancelBtn.disabled = true;
   status.className = 'reply-status';
   status.textContent = 'Sending…';
   const res = await QA.replyToCard(card.cardId, text);
   if (res && res.ok) {
     status.textContent = 'Sent';
-    replyingId = null;
     replyDraft = null;
     delete replyDefaultUser[card.id];
-    if (historyOpen.has(card.id)) { delete historyCache[card.id]; loadHistory(card.id); }
     try { await QA.moveCard(card.id, 'done'); } catch (e) {}
+    loadHistory(card.id);   // refresh the thread in place — the modal stays open
     load();
   } else {
     sendBtn.disabled = false;
-    cancelBtn.disabled = false;
     status.className = 'reply-status bad';
     status.textContent = QA.replyErrorMessage(res);
   }
 }
 
-/* One reaction click, on either the card's own tagged comment (.emo alone) or
-   a specific comment inside the expanded history (.hist-emo, matched by index
-   into that card's cached comment feed). */
+/* Reacting to the card's own tagged comment (the board card's react row —
+   the modal's per-comment reactions are handled separately, in the modal's
+   own click handler below). */
 async function handleReactClick(e) {
   const item = e.target.closest('.item');
   const card = cardsById[item.dataset.id];
@@ -312,20 +324,35 @@ async function handleReactClick(e) {
   const r = QA.REACTIONS.filter((x) => x.emoji === e.target.dataset.emoji)[0];
   if (!r) return;
 
-  let target;
-  let scope;
-  if (e.target.classList.contains('hist-emo')) {
-    const idx = Number(e.target.closest('.hist-item').dataset.idx);
-    const cache = historyCache[card.id];
-    const c = cache && cache.ok && cache.comments[idx];
-    if (!c) return;
-    target = { cardId: card.cardId, text: c.text, actorUser: c.by };
-    scope = e.target.closest('.hist-acts');
-  } else {
-    target = { cardId: card.cardId, text: card.body || card.title || '', actorUser: card.actorUser };
-    scope = e.target.closest('.react');
+  const target = { cardId: card.cardId, text: card.body || card.title || '', actorUser: card.actorUser };
+  const scope = e.target.closest('.react');
+  const note = scope.querySelector('.rnote');
+  scope.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  note.className = 'rnote';
+  note.textContent = 'Reacting…';
+  const res = await QA.reactToMention(target, r);
+  scope.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+  if (!res || !res.ok) {
+    note.className = 'rnote bad';
+    note.textContent = QA.reactErrorMessage(res);
+    return;
   }
+  e.target.classList.add('on');
+  note.className = 'rnote ok';
+  note.textContent = res.already ? r.emoji + ' already there' : r.emoji + ' added';
+}
 
+async function handleModalReactClick(e) {
+  const card = cardsById[modalCardId];
+  if (!card) return;
+  const r = QA.REACTIONS.filter((x) => x.emoji === e.target.dataset.emoji)[0];
+  if (!r) return;
+  const idx = Number(e.target.closest('.modal-item').dataset.idx);
+  const cache = historyCache[modalCardId];
+  const c = cache && cache.ok && cache.comments[idx];
+  if (!c) return;
+  const target = { cardId: card.cardId, text: c.text, actorUser: c.by };
+  const scope = e.target.closest('.hist-acts');
   const note = scope.querySelector('.rnote');
   scope.querySelectorAll('button').forEach((b) => { b.disabled = true; });
   note.className = 'rnote';
@@ -358,64 +385,12 @@ boardEl.addEventListener('click', async (e) => {
   }
 
   if (e.target.classList.contains('hist-btn')) {
-    toggleHistory(e.target.closest('.item').dataset.id);
-    return;
-  }
-
-  if (e.target.classList.contains('hist-reply-btn')) {
-    const item = e.target.closest('.item');
-    const id = item.dataset.id;
-    const idx = Number(e.target.closest('.hist-item').dataset.idx);
-    const cache = historyCache[id];
-    const c = cache && cache.ok && cache.comments[idx];
-    replyDefaultUser[id] = (c && c.by) || '';
-    replyingId = id;
-    replyDraft = null;   // a fresh box, targeting a specific comment — not a continuation of any draft
-    render(Object.values(cardsById));
+    openModal(e.target.closest('.item').dataset.id, false);
     return;
   }
 
   if (e.target.classList.contains('reply-btn')) {
-    const id = e.target.closest('.item').dataset.id;
-    if (replyingId === id) {
-      replyingId = null;
-    } else {
-      replyingId = id;
-      delete replyDefaultUser[id];   // opened from the card itself — default to the original tagger
-    }
-    replyDraft = null;
-    render(Object.values(cardsById));
-    return;
-  }
-  if (e.target.classList.contains('cancel-reply')) {
-    delete replyDefaultUser[replyingId];
-    replyingId = null;
-    replyDraft = null;
-    render(Object.values(cardsById));
-    return;
-  }
-  if (e.target.classList.contains('send-reply')) {
-    const item = e.target.closest('.item');
-    await sendReply(item, cardsById[item.dataset.id]);
-    return;
-  }
-  if (e.target.classList.contains('chip') && e.target.closest('.reply')) {
-    const item = e.target.closest('.item');
-    const card = cardsById[item.dataset.id];
-    const ta = item.querySelector('.reply-in');
-    const user = defaultReplyUser(card);
-    const at = user ? '@' + user + ' ' : '';
-    ta.value = at + e.target.dataset.q;
-    replyDraft = ta.value;
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-    closeMentionList(item);
-    return;
-  }
-  if (e.target.closest('.mention-row')) {
-    const item = e.target.closest('.item');
-    const ta = item.querySelector('.reply-in');
-    insertMention(ta, item, e.target.closest('.mention-row').dataset.u);
+    openModal(e.target.closest('.item').dataset.id, true);
     return;
   }
 
@@ -431,55 +406,97 @@ boardEl.addEventListener('click', async (e) => {
   }
 
   /* Clicking the card itself — its title, context, due chip, body text, the
-     drag handle, blank padding — opens it, same as the "Open card" button.
-     Anything that's its own control (buttons/links/inputs above) already
-     returned by this point, and clicks inside an already-open history or
-     reply panel are left alone so reading/selecting that text doesn't
-     collapse it back. */
-  if (e.target.closest('.hist') || e.target.closest('.reply')) return;
+     drag handle, blank padding — opens it, same as the "Open card" button. */
   const item = e.target.closest('.item');
   const card = item && cardsById[item.dataset.id];
   if (!card || !card.cardId) return;
   if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
-  toggleHistory(item.dataset.id);
+  openModal(item.dataset.id, false);
 });
 
-boardEl.addEventListener('mousedown', (e) => {
+/* ---------- the "Open card" modal itself ---------- */
+
+modalEl.addEventListener('click', async (e) => {
+  if (e.target === modalEl || e.target.classList.contains('modal-close')) {
+    closeModal();
+    return;
+  }
+
+  if (e.target.classList.contains('emo')) {
+    await handleModalReactClick(e);
+    return;
+  }
+
+  if (e.target.classList.contains('hist-reply-btn')) {
+    const idx = Number(e.target.closest('.modal-item').dataset.idx);
+    const cache = historyCache[modalCardId];
+    const c = cache && cache.ok && cache.comments[idx];
+    replyDefaultUser[modalCardId] = (c && c.by) || '';
+    replyDraft = null;
+    renderModal(true);
+    return;
+  }
+
+  if (e.target.classList.contains('send-reply')) {
+    await sendReply();
+    return;
+  }
+
+  if (e.target.classList.contains('chip')) {
+    const card = cardsById[modalCardId];
+    const ta = modalBoxEl.querySelector('.reply-in');
+    const user = defaultReplyUser(card);
+    const at = user ? '@' + user + ' ' : '';
+    ta.value = at + e.target.dataset.q;
+    replyDraft = ta.value;
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    closeMentionList();
+    return;
+  }
+
+  if (e.target.closest('.mention-row')) {
+    insertMention(e.target.closest('.mention-row').dataset.u);
+    return;
+  }
+});
+
+modalEl.addEventListener('mousedown', (e) => {
   // keep the textarea focused when clicking a mention suggestion
   if (e.target.closest('.mention-row')) e.preventDefault();
 });
 
-boardEl.addEventListener('input', (e) => {
+modalEl.addEventListener('input', (e) => {
   if (!e.target.classList.contains('reply-in')) return;
   replyDraft = e.target.value;
-  const item = e.target.closest('.item');
-  const card = cardsById[item.dataset.id];
-  maybeSuggest(e.target, item, card.cardId);
+  const card = cardsById[modalCardId];
+  maybeSuggest(e.target, card && card.cardId);
 });
 
-boardEl.addEventListener('blur', (e) => {
+modalEl.addEventListener('blur', (e) => {
   if (!e.target.classList.contains('reply-in')) return;
-  const item = e.target.closest('.item');
-  setTimeout(() => closeMentionList(item), 120);
+  setTimeout(closeMentionList, 120);
 }, true);
 
-boardEl.addEventListener('keydown', (e) => {
+modalEl.addEventListener('keydown', (e) => {
   if (!e.target.classList.contains('reply-in')) return;
-  const item = e.target.closest('.item');
-  const list = item.querySelector('.mention-list');
+  const list = modalBoxEl.querySelector('.mention-list');
   const picks = list && !list.hidden ? JSON.parse(list.dataset.picks || '[]') : [];
   const sel = list ? Number(list.dataset.sel || 0) : 0;
   const open = picks.length > 0;
 
   if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
     e.preventDefault();
-    drawMentionList(item, picks, (sel + (e.key === 'ArrowDown' ? 1 : picks.length - 1)) % picks.length);
+    drawMentionList(picks, (sel + (e.key === 'ArrowDown' ? 1 : picks.length - 1)) % picks.length);
     return;
   }
-  if (open && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); insertMention(e.target, item, picks[sel].username); return; }
-  if (open && e.key === 'Escape') { e.preventDefault(); closeMentionList(item); return; }
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(item, cardsById[item.dataset.id]); }
-  if (e.key === 'Escape') { replyingId = null; replyDraft = null; render(Object.values(cardsById)); }
+  if (open && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); insertMention(picks[sel].username); return; }
+  if (open && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMentionList(); return; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalCardId) closeModal();
 });
 
 /* ---------- drag and drop between columns ---------- */
@@ -600,13 +617,11 @@ async function load() {
   }
 }
 
-/* the passive/periodic refresh skips while a reply is open (so a poll never wipes
-   text someone's mid-typing) or while a comment history panel is open (so a poll
-   never resets someone's scroll position mid-read); an explicit action
-   (move/delete/drop/send/expand) on any card still refreshes immediately via its
-   own load() or loadHistory() call */
+/* The board's own periodic refresh no longer needs to avoid the modal — the
+   modal is a separate piece of the page from boardEl, so rebuilding the
+   board list never touches whatever's open in it. */
 function passiveRefresh() {
-  if (document.visibilityState === 'visible' && !replyingId && !historyOpen.size) load();
+  if (document.visibilityState === 'visible') load();
 }
 
 load();
