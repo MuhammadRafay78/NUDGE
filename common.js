@@ -2968,6 +2968,94 @@ var QA = (function () {
     };
   }
 
+  /* ---------- daily board update ----------
+     One short message, drafted from what's actually on the board right now —
+     mainly which client cards (QTM codes) are in Doing / Action Items today —
+     ready to copy and send to whoever wants to know what he's working on.
+     Reuses the same Anthropic key as Ask Claude; nothing is sent anywhere,
+     it just fills the textarea for him to copy himself. */
+
+  async function getDailyUpdate() {
+    const got = await chrome.storage.sync.get({ dailyUpdate: null });
+    return Object.assign({ recipient: 'Nestor' }, got.dailyUpdate || {});
+  }
+
+  async function setDailyUpdate(patch) {
+    const cur = await getDailyUpdate();
+    await chrome.storage.sync.set({ dailyUpdate: Object.assign(cur, patch) });
+  }
+
+  const DAILY_UPDATE_SYSTEM = [
+    'You write a short daily work-status message for a tax professional to send to a colleague.',
+    'You are given a snapshot of his Kanban board: cards grouped by column —',
+    'Inbox (new, not yet started), Doing (actively being worked today), Action Items (needs a decision, a reply, or is blocked on someone else), Done (finished, listed only as a count).',
+    'Each card may show a client/QTM name, a due date, and a short note.',
+    'Write ONE short message — a sentence or two of lead-in, then a plain list of the client/QTM names being worked on today (from Doing, plus anything in Action Items or due today/overdue worth flagging). That list is the point of the message; do not pad it with extra detail per item.',
+    'Skip Done and Inbox entirely unless something there is due today or overdue.',
+    'Never invent a client name, QTM code, or due date that is not in the data given. If there is nothing to report, say so plainly in one line.',
+    'No markdown headers, no bullet symbols unless the list has more than about five items. Plain text, the way a person would actually type a quick message.'
+  ].join('\n');
+
+  function buildDailyUpdateContext(cards) {
+    const lines = ['TODAY: ' + new Date().toDateString()];
+    BOARD_COLUMNS.forEach(function (col) {
+      const items = (cards || []).filter(function (c) { return c.column === col.id; });
+      if (col.id === 'done') {
+        lines.push(col.label.toUpperCase() + ': ' + items.length + ' card(s) — not relevant to today\'s update.');
+        return;
+      }
+      lines.push(col.label.toUpperCase() + (items.length ? ':' : ': (nothing here)'));
+      items.forEach(function (c) {
+        const name = c.context || c.title;
+        const bits = [name];
+        if (c.due) bits.push(c.due);
+        lines.push('- ' + bits.join(' — '));
+      });
+    });
+    return lines.join('\n');
+  }
+
+  async function draftDailyUpdate(cards, recipient) {
+    const cfg = await getAI();
+    if (!cfg.apiKey) {
+      const e = new Error('No API key yet. Open Settings → Ask Claude and paste your Anthropic key.');
+      e.needsKey = true;
+      throw e;
+    }
+    const context = buildDailyUpdateContext(cards);
+    const ask = recipient
+      ? 'Address it to ' + recipient + ' by name (e.g. "Hi ' + recipient + ',").'
+      : 'Open with a brief greeting, no specific name.';
+
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': cfg.apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: cfg.model || 'claude-sonnet-5',
+          max_tokens: 400,
+          system: DAILY_UPDATE_SYSTEM,
+          messages: [{ role: 'user', content: ask + '\n\nBOARD SNAPSHOT:\n' + context }]
+        })
+      });
+    } catch (e) {
+      throw new Error('Could not reach the Anthropic API (offline?): ' + ((e && e.message) || e));
+    }
+    if (!res.ok) {
+      let body = '';
+      try { body = await res.text(); } catch (e) {}
+      throw new Error(aiErrorMessage(res.status, body));
+    }
+    const j = await res.json();
+    const text = (j.content || []).filter(function (c) { return c.type === 'text'; }).map(function (c) { return c.text; }).join('\n').trim();
+    return { text: text || '(empty answer)', model: j.model || cfg.model };
+  }
 
   /* ---------- weekly follow-up draft ----------
      Reads next week's calendar, finds each client's card, pulls the documents
@@ -4022,6 +4110,7 @@ var QA = (function () {
     chipForEvent, decodeDateKey, meetingDate, whenLabel, DAY_SHORT, MONTH_SHORT,
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
+    getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
