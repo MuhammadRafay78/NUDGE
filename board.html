@@ -56,28 +56,8 @@
     .item .acts .hist-btn:hover, .item .acts .reply-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
     .item a.open { color: var(--muted); font-size: 11px; text-decoration: none; align-self: center; }
     .item a.open:hover { color: var(--accent); }
-    .item .reply { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-    .item .reply-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 
     .item .react { margin-top: 6px; }
-    .item .hist { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
-      display: flex; flex-direction: column; gap: 10px; max-height: 380px; overflow-y: auto; }
-    .item .hist-status { color: var(--muted); font-size: 12px; }
-    .item .hist-status.bad { color: var(--accent); font-size: 12.5px; font-weight: 550;
-      background: var(--accent-soft); padding: 8px 10px; border-radius: 8px; }
-    .item .hist-desc { font-size: 12.5px; color: var(--fg); line-height: 1.4; white-space: pre-wrap;
-      overflow-wrap: anywhere; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-    .item .hist-checklist { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-    .item .hist-checklist-n { font-size: 11.5px; font-weight: 650; color: var(--muted); margin-bottom: 4px; }
-    .item .hist-checklist ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--fg); }
-    .item .hist-checklist li { margin-bottom: 2px; }
-    .item .hist-item { min-width: 0; }
-    .item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
-    .item .hist-meta b { color: var(--fg); font-weight: 650; }
-    .item .hist-text { font-size: 12.5px; color: var(--fg); line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .item .hist-acts { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
-    .item .hist-acts .hist-reply-btn { color: var(--accent); font-size: 11px; background: none; border: none;
-      padding: 0 0 0 4px; cursor: pointer; }
     .item button.emo { font-size: 13px; padding: 2px 6px; }
     .item .del { color: var(--muted); background: none; border: none; font-size: 16px; line-height: 1;
       padding: 2px 4px; cursor: pointer; border-radius: 5px; transition: color .1s, background .1s; }
@@ -85,6 +65,41 @@
 
     .status { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
     .warn { color: var(--accent); font-size: 13px; margin-bottom: 10px; }
+
+    /* ---- "Open card" modal — just the comment thread, opened like a real
+       Trello card instead of pushing the column layout down ---- */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 50;
+      display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; overflow-y: auto; }
+    .modal-backdrop[hidden] { display: none; }
+    .modal-box { background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+      width: 100%; max-width: 560px; max-height: 88vh; display: flex; flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, .35); }
+    .modal-head { position: relative; padding: 18px 46px 14px 20px; border-bottom: 1px solid var(--line); }
+    .modal-head .t { font-weight: 700; font-size: 16px; margin-bottom: 2px; overflow-wrap: anywhere; }
+    .modal-head .sub { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .modal-head .due { display: inline-block; color: var(--accent); background: var(--accent-soft);
+      font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 5px; margin-right: 8px; }
+    .modal-head a.open { color: var(--muted); font-size: 11.5px; text-decoration: none; }
+    .modal-head a.open:hover { color: var(--accent); }
+    .modal-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
+      border-radius: 8px; border: none; background: none; color: var(--muted); font-size: 19px;
+      line-height: 1; cursor: pointer; }
+    .modal-close:hover { background: var(--card); color: var(--fg); }
+    .modal-body { padding: 14px 20px; overflow-y: auto; flex: 1 1 auto;
+      display: flex; flex-direction: column; gap: 14px; }
+    .modal-status { color: var(--muted); font-size: 12.5px; }
+    .modal-status.bad { color: var(--accent); font-size: 12.5px; font-weight: 550;
+      background: var(--accent-soft); padding: 8px 10px; border-radius: 8px; }
+    .modal-item { min-width: 0; }
+    .modal-item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+    .modal-item .hist-meta b { color: var(--fg); font-weight: 650; }
+    .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .modal-item .hist-acts { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+    .modal-item .hist-acts .hist-reply-btn { color: var(--accent); font-size: 11.5px; background: none;
+      border: none; padding: 0 0 0 4px; cursor: pointer; }
+    .modal-item button.emo { font-size: 13px; padding: 2px 6px; }
+    .modal-foot { padding: 14px 20px 18px; border-top: 1px solid var(--line); }
+    .reply-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -105,6 +120,10 @@
   </div>
 
   <div class="board" id="board"></div>
+
+  <div class="modal-backdrop" id="cardModal" hidden>
+    <div class="modal-box" id="cardModalBox"></div>
+  </div>
 
   <script src="common.js"></script>
   <script src="board.js"></script>
