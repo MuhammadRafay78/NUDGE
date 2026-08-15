@@ -594,10 +594,68 @@ async function notifyFollowup(draft) {
   await QA.pushToPhone('Follow-up draft ready', message, '');
 }
 
+/* ---------- daily board update (scheduled) ----------
+   The board page's own "Today's update" button calls prepareDailyUpdate
+   directly via a message so the manual and scheduled paths share one
+   implementation; this is just what runs it unattended and tells him it's
+   there. Nothing is sent anywhere on its own — same as the weekly
+   follow-up, this only ever fills a draft and notifies. */
+
+async function prepareDailyUpdate(reason) {
+  const cfg = await QA.getDailyUpdate();
+  let cards;
+  try {
+    cards = await QA.fetchCards();
+  } catch (e) {
+    const draft = {
+      at: Date.now(), reason: reason, text: '',
+      problem: 'Could not read the board — fill in the server address and pairing code in Settings first.'
+    };
+    await chrome.storage.local.set({ dailyUpdateDraft: draft });
+    return draft;
+  }
+  let draft;
+  try {
+    const res = await QA.draftDailyUpdate(cards, cfg.recipient);
+    draft = { at: Date.now(), reason: reason, text: res.text };
+  } catch (e) {
+    draft = { at: Date.now(), reason: reason, text: '', problem: (e && e.message) || 'Could not draft the update.' };
+  }
+  await chrome.storage.local.set({ dailyUpdateDraft: draft });
+  return draft;
+}
+
+async function notifyDailyUpdate(draft) {
+  const message = draft.problem || (draft.text ? draft.text.slice(0, 150) : 'Ready to review.');
+  chrome.notifications.create('dailyupdate|' + Date.now(), {
+    type: 'basic',
+    iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+    title: draft.problem ? 'Could not draft today\'s update' : 'Today\'s update is ready',
+    message: message,
+    contextMessage: 'Click to review before you send it',
+    priority: 1
+  });
+  if (!draft.problem) await QA.pushToPhone('Today\'s update is ready', message, '');
+}
+
+async function scheduleDailyUpdate() {
+  const cfg = await QA.getDailyUpdate();
+  if (!cfg.on) { chrome.alarms.clear('dailyUpdate'); return; }
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(cfg.hour, cfg.minute || 0, 0, 0);
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+  chrome.alarms.create('dailyUpdate', { when: next.getTime(), periodInMinutes: 24 * 60 });
+}
+
 chrome.notifications.onClicked.addListener((id) => {
   if (id.indexOf('followup|') === 0) {
     chrome.notifications.clear(id);
     chrome.tabs.create({ url: chrome.runtime.getURL('followup.html') });
+  }
+  if (id.indexOf('dailyupdate|') === 0) {
+    chrome.notifications.clear(id);
+    chrome.tabs.create({ url: chrome.runtime.getURL('board.html') });
   }
 });
 
@@ -636,12 +694,14 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   chrome.alarms.create('trello', { periodInMinutes: 1 });
   scheduleFollowup();
+  scheduleDailyUpdate();
   await checkTrello('installed');
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   chrome.alarms.create('trello', { periodInMinutes: 1 });
   scheduleFollowup();
+  scheduleDailyUpdate();
   await checkTrello('startup');
 });
 
@@ -650,6 +710,10 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'followup') {
     const draft = await prepareFollowup('weekly');
     await notifyFollowup(draft);
+  }
+  if (a.name === 'dailyUpdate') {
+    const draft = await prepareDailyUpdate('scheduled');
+    await notifyDailyUpdate(draft);
   }
 });
 
@@ -717,6 +781,11 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     return true;
   }
   if (msg.type === 'rescheduleFollowup') { scheduleFollowup(); }
+  if (msg.type === 'prepareDailyUpdate') {
+    prepareDailyUpdate('asked').then((d) => respond && respond(d));
+    return true;
+  }
+  if (msg.type === 'rescheduleDailyUpdate') { scheduleDailyUpdate(); }
   if (msg.type === 'chaseState') {
     (async () => {
       const cfg = await QA.getFollowup();
@@ -730,4 +799,4 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   return false;
 });
 
-if (typeof self !== 'undefined') self.__bg = { checkTrello, readNotifications, directNotifications, getReach, openFromNotification, doneFromNotification, findTrelloTab, updateBadge, getNotify, prepareFollowup, readNextWeekCalendar, scheduleFollowup, notifyFollowup };
+if (typeof self !== 'undefined') self.__bg = { checkTrello, readNotifications, directNotifications, getReach, openFromNotification, doneFromNotification, findTrelloTab, updateBadge, getNotify, prepareFollowup, readNextWeekCalendar, scheduleFollowup, notifyFollowup, prepareDailyUpdate, scheduleDailyUpdate, notifyDailyUpdate };

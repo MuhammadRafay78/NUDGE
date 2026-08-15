@@ -109,6 +109,8 @@
       padding: 14px 16px; margin-bottom: 16px; }
     .update-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
     .update-head b { font-size: 13.5px; }
+    .update-head input#updateAutoTime { font: inherit; font-size: 12.5px; padding: 5px 7px;
+      border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
     #updateText { width: 100%; font: inherit; font-size: 13.5px; line-height: 1.5; padding: 10px 12px;
       border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
       resize: vertical; min-height: 90px; }
@@ -135,6 +137,10 @@
       <b>Today's update</b>
       <span class="meta" id="updateWhen"></span>
       <span class="spacer" style="flex:1"></span>
+      <label class="meta" style="display:flex;align-items:center;gap:5px;cursor:pointer">
+        <input type="checkbox" id="updateAuto"> Auto-generate daily at
+      </label>
+      <input type="time" id="updateAutoTime" title="When the daily update drafts itself">
       <button class="btn" id="updateRegen">Regenerate</button>
       <button class="btn go" id="updateCopy">Copy</button>
       <button class="modal-close" id="updateClose" title="Dismiss" style="position:static">&times;</button>

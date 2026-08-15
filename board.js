@@ -17,6 +17,8 @@ const updateRecipient = document.getElementById('updateRecipient');
 const updateRegen = document.getElementById('updateRegen');
 const updateCopy = document.getElementById('updateCopy');
 const updateClose = document.getElementById('updateClose');
+const updateAuto = document.getElementById('updateAuto');
+const updateAutoTime = document.getElementById('updateAutoTime');
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -613,37 +615,69 @@ backfillBtn.addEventListener('click', async () => {
 });
 
 /* ---------- daily update: one AI-drafted message of which cards are
-   being worked on today. Uses the same Anthropic key as Ask Claude
+   being worked on today. Uses the same Gemini key as "Sort mentions"
    (Settings). Nothing is sent anywhere — it just fills a textarea to
    copy from, same "review before it goes anywhere" spirit as the rest
-   of this board. ---------- */
+   of this board. Both the button here and the scheduled alarm run
+   through background.js's prepareDailyUpdate, so there's one
+   implementation instead of two. ---------- */
 
-QA.getDailyUpdate().then((cfg) => { updateRecipient.value = cfg.recipient || ''; });
+/* Fire-and-forget messaging to the background page — same pattern as
+   followup.js. With no listener Chrome rejects the promise, which is
+   expected, not a failure a plain try/catch would catch. */
+function tell(msg, cb) {
+  try {
+    const p = cb ? chrome.runtime.sendMessage(msg, cb) : chrome.runtime.sendMessage(msg);
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch (e) {}
+}
+
+QA.getDailyUpdate().then((cfg) => {
+  updateRecipient.value = cfg.recipient || '';
+  updateAuto.checked = !!cfg.on;
+  const hh = String(typeof cfg.hour === 'number' ? cfg.hour : 8).padStart(2, '0');
+  const mm = String(typeof cfg.minute === 'number' ? cfg.minute : 0).padStart(2, '0');
+  updateAutoTime.value = hh + ':' + mm;
+});
 updateRecipient.addEventListener('change', () => {
   QA.setDailyUpdate({ recipient: updateRecipient.value.trim() });
 });
+updateAuto.addEventListener('change', () => {
+  QA.setDailyUpdate({ on: updateAuto.checked }).then(() => tell({ type: 'rescheduleDailyUpdate' }));
+});
+updateAutoTime.addEventListener('change', () => {
+  const bits = (updateAutoTime.value || '08:00').split(':').map(Number);
+  QA.setDailyUpdate({ hour: bits[0] || 0, minute: bits[1] || 0 }).then(() => tell({ type: 'rescheduleDailyUpdate' }));
+});
 
-async function generateDailyUpdate() {
+function showDailyUpdate(draft) {
+  if (draft && draft.text) updateText.value = draft.text;
+  updateWhen.textContent = draft && draft.at ? 'Generated ' + QA.ago(draft.at) : '';
+  if (draft && draft.problem) {
+    updateStatus.className = 'meta bad';
+    updateStatus.textContent = draft.problem;
+  } else {
+    updateStatus.className = 'meta';
+    updateStatus.textContent = '';
+  }
+}
+
+function generateDailyUpdate() {
   dailyUpdateBtn.disabled = true;
   updateRegen.disabled = true;
   updatePanel.hidden = false;
   updateStatus.className = 'meta';
   updateStatus.textContent = 'Writing…';
-  try {
-    const cards = Object.keys(cardsById).length ? Object.values(cardsById) : await QA.fetchCards();
-    const cfg = await QA.getDailyUpdate();
-    const res = await QA.draftDailyUpdate(cards, cfg.recipient);
-    updateText.value = res.text;
-    updateWhen.textContent = 'Generated ' + QA.ago(Date.now());
-    updateStatus.textContent = '';
-    await chrome.storage.local.set({ dailyUpdateDraft: { text: res.text, at: Date.now() } });
-  } catch (err) {
-    updateStatus.className = 'meta bad';
-    updateStatus.textContent = (err && err.message) || 'Could not write the update.';
-  } finally {
+  tell({ type: 'prepareDailyUpdate' }, (draft) => {
     dailyUpdateBtn.disabled = false;
     updateRegen.disabled = false;
-  }
+    if (!draft) {
+      updateStatus.className = 'meta bad';
+      updateStatus.textContent = 'Could not write the update.';
+      return;
+    }
+    showDailyUpdate(draft);
+  });
 }
 
 dailyUpdateBtn.addEventListener('click', generateDailyUpdate);
@@ -662,13 +696,13 @@ updateCopy.addEventListener('click', async () => {
   updateStatus.textContent = 'Copied.';
 });
 
-/* a draft from earlier today survives reopening the board; from a
-   previous day it's stale, so it's left for "Today's update" to redo */
+/* a draft from earlier today (manual or scheduled) survives reopening the
+   board; from a previous day it's stale, so it's left for "Today's
+   update"/the next scheduled run to redo, not shown as if it were fresh */
 chrome.storage.local.get({ dailyUpdateDraft: null }).then((got) => {
   const d = got.dailyUpdateDraft;
-  if (d && d.text && new Date(d.at).toDateString() === new Date().toDateString()) {
-    updateText.value = d.text;
-    updateWhen.textContent = 'Generated ' + QA.ago(d.at);
+  if (d && (d.text || d.problem) && new Date(d.at).toDateString() === new Date().toDateString()) {
+    showDailyUpdate(d);
     updatePanel.hidden = false;
   }
 });

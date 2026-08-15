@@ -2972,12 +2972,13 @@ var QA = (function () {
      One short message, drafted from what's actually on the board right now —
      mainly which client cards (QTM codes) are in Doing / Action Items today —
      ready to copy and send to whoever wants to know what he's working on.
-     Reuses the same Anthropic key as Ask Claude; nothing is sent anywhere,
-     it just fills the textarea for him to copy himself. */
+     Reuses the same Gemini key as "Sort mentions"; nothing is sent anywhere
+     on its own — a scheduled run only fills the textarea and notifies him,
+     same as the weekly follow-up draft does. */
 
   async function getDailyUpdate() {
     const got = await chrome.storage.sync.get({ dailyUpdate: null });
-    return Object.assign({ recipient: 'Nestor' }, got.dailyUpdate || {});
+    return Object.assign({ recipient: 'Nestor', on: false, hour: 8, minute: 0 }, got.dailyUpdate || {});
   }
 
   async function setDailyUpdate(patch) {
@@ -3015,10 +3016,12 @@ var QA = (function () {
     return lines.join('\n');
   }
 
+  /* Gemini, not Claude — reuses the same key as "Sort mentions into Needs
+     me / Waiting / FYI" (getTriage), rather than asking for a second key. */
   async function draftDailyUpdate(cards, recipient) {
-    const cfg = await getAI();
+    const cfg = await getTriage();
     if (!cfg.apiKey) {
-      const e = new Error('No API key yet. Open Settings → Ask Claude and paste your Anthropic key.');
+      const e = new Error('No Gemini key yet. Open Settings → Sort mentions and paste your Google AI Studio key.');
       e.needsKey = true;
       throw e;
     }
@@ -3027,34 +3030,35 @@ var QA = (function () {
       ? 'Address it to ' + recipient + ' by name (e.g. "Hi ' + recipient + ',").'
       : 'Open with a brief greeting, no specific name.';
 
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent';
+
     let res;
     try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
+      res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': cfg.apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
         body: JSON.stringify({
-          model: cfg.model || 'claude-sonnet-5',
-          max_tokens: 400,
-          system: DAILY_UPDATE_SYSTEM,
-          messages: [{ role: 'user', content: ask + '\n\nBOARD SNAPSHOT:\n' + context }]
+          system_instruction: { parts: [{ text: DAILY_UPDATE_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: ask + '\n\nBOARD SNAPSHOT:\n' + context }] }],
+          generationConfig: { temperature: 0.4, maxOutputTokens: 400 }
         })
       });
     } catch (e) {
-      throw new Error('Could not reach the Anthropic API (offline?): ' + ((e && e.message) || e));
+      throw new Error('Could not reach Gemini (offline?): ' + ((e && e.message) || e));
     }
     if (!res.ok) {
-      let body = '';
-      try { body = await res.text(); } catch (e) {}
-      throw new Error(aiErrorMessage(res.status, body));
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = (body && body.error && body.error.message) || '';
+      } catch (e) { /* the status is enough */ }
+      throw new Error(triageError(res.status, detail));
     }
-    const j = await res.json();
-    const text = (j.content || []).filter(function (c) { return c.type === 'text'; }).map(function (c) { return c.text; }).join('\n').trim();
-    return { text: text || '(empty answer)', model: j.model || cfg.model };
+    const body = await res.json();
+    const parts = (((body.candidates || [])[0] || {}).content || {}).parts;
+    const text = (parts || []).map(function (p) { return p.text || ''; }).join('\n').trim();
+    return { text: text || '(empty answer)', model: cfg.model };
   }
 
   /* ---------- weekly follow-up draft ----------
