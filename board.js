@@ -8,6 +8,15 @@ const addBtn = document.getElementById('addBtn');
 const backfillBtn = document.getElementById('backfillBtn');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
+const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
+const updatePanel = document.getElementById('updatePanel');
+const updateText = document.getElementById('updateText');
+const updateWhen = document.getElementById('updateWhen');
+const updateStatus = document.getElementById('updateStatus');
+const updateRecipient = document.getElementById('updateRecipient');
+const updateRegen = document.getElementById('updateRegen');
+const updateCopy = document.getElementById('updateCopy');
+const updateClose = document.getElementById('updateClose');
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -601,6 +610,67 @@ backfillBtn.addEventListener('click', async () => {
   await load();   // refresh the board first — load() sets its own status text, so...
   statusEl.textContent = 'Backfilled ' + done + ' of ' + targets.length +
     (failed ? ' (' + failed + ' failed — needs an open Trello tab)' : '') + '.';   // ...overwrite it with the fuller result
+});
+
+/* ---------- daily update: one AI-drafted message of which cards are
+   being worked on today. Uses the same Anthropic key as Ask Claude
+   (Settings). Nothing is sent anywhere — it just fills a textarea to
+   copy from, same "review before it goes anywhere" spirit as the rest
+   of this board. ---------- */
+
+QA.getDailyUpdate().then((cfg) => { updateRecipient.value = cfg.recipient || ''; });
+updateRecipient.addEventListener('change', () => {
+  QA.setDailyUpdate({ recipient: updateRecipient.value.trim() });
+});
+
+async function generateDailyUpdate() {
+  dailyUpdateBtn.disabled = true;
+  updateRegen.disabled = true;
+  updatePanel.hidden = false;
+  updateStatus.className = 'meta';
+  updateStatus.textContent = 'Writing…';
+  try {
+    const cards = Object.keys(cardsById).length ? Object.values(cardsById) : await QA.fetchCards();
+    const cfg = await QA.getDailyUpdate();
+    const res = await QA.draftDailyUpdate(cards, cfg.recipient);
+    updateText.value = res.text;
+    updateWhen.textContent = 'Generated ' + QA.ago(Date.now());
+    updateStatus.textContent = '';
+    await chrome.storage.local.set({ dailyUpdateDraft: { text: res.text, at: Date.now() } });
+  } catch (err) {
+    updateStatus.className = 'meta bad';
+    updateStatus.textContent = (err && err.message) || 'Could not write the update.';
+  } finally {
+    dailyUpdateBtn.disabled = false;
+    updateRegen.disabled = false;
+  }
+}
+
+dailyUpdateBtn.addEventListener('click', generateDailyUpdate);
+updateRegen.addEventListener('click', generateDailyUpdate);
+updateClose.addEventListener('click', () => { updatePanel.hidden = true; });
+
+updateCopy.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(updateText.value);
+  } catch (e) {
+    updateText.focus();
+    updateText.select();
+    document.execCommand('copy');
+  }
+  updateStatus.className = 'meta ok';
+  updateStatus.textContent = 'Copied.';
+});
+
+/* a draft from earlier today survives reopening the board; from a
+   previous day it's stale, so it's left for "Today's update" to redo */
+chrome.storage.local.get({ dailyUpdateDraft: null }).then((got) => {
+  const d = got.dailyUpdateDraft;
+  if (d && d.text && new Date(d.at).toDateString() === new Date().toDateString()) {
+    updateText.value = d.text;
+    updateWhen.textContent = 'Generated ' + QA.ago(d.at);
+    updatePanel.hidden = false;
+  }
 });
 
 async function load() {

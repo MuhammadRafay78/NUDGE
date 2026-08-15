@@ -100,6 +100,20 @@
     .modal-item button.emo { font-size: 13px; padding: 2px 6px; }
     .modal-foot { padding: 14px 20px 18px; border-top: 1px solid var(--line); }
     .reply-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
+    /* ---- daily update: one AI-drafted message of which cards are being
+       worked on today, ready to copy and send ---- */
+    .bar2 input#updateRecipient { flex: 0 0 140px; font: inherit; font-size: 12.5px; padding: 7px 9px;
+      border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+    .update-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+      padding: 14px 16px; margin-bottom: 16px; }
+    .update-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+    .update-head b { font-size: 13.5px; }
+    #updateText { width: 100%; font: inherit; font-size: 13.5px; line-height: 1.5; padding: 10px 12px;
+      border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+      resize: vertical; min-height: 90px; }
+    .meta.ok { color: #16a34a; font-weight: 600; }
+    .meta.bad { color: var(--accent); }
   </style>
 </head>
 <body>
@@ -110,8 +124,23 @@
     <input type="text" id="newTitle" placeholder="Start a card…" maxlength="200">
     <button class="btn go" id="addBtn">Start</button>
     <span class="spacer" style="flex:1"></span>
+    <input type="text" id="updateRecipient" placeholder="Update for…" maxlength="60" title="Who this daily update is addressed to">
+    <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
     <button class="btn" id="backfillBtn" title="Fill in client name + due date for older cards that were filed before this worked reliably — needs an open Trello tab">Backfill details</button>
     <span class="meta" id="status"></span>
+  </div>
+
+  <div class="update-panel" id="updatePanel" hidden>
+    <div class="update-head">
+      <b>Today's update</b>
+      <span class="meta" id="updateWhen"></span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="updateRegen">Regenerate</button>
+      <button class="btn go" id="updateCopy">Copy</button>
+      <button class="modal-close" id="updateClose" title="Dismiss" style="position:static">&times;</button>
+    </div>
+    <textarea id="updateText" rows="5" placeholder="Click “Today's update” to draft it…"></textarea>
+    <div class="meta" id="updateStatus" style="margin-top:8px"></div>
   </div>
 
   <div id="notConfigured" class="warn" hidden>
