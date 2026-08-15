@@ -28,6 +28,9 @@ const historyOpen = new Set();   // card ids currently showing the comments/acti
 const historyCache = {};         // card id -> { loading } | { ok:true, comments } | { ok:false, error }
 const replyDefaultUser = {};     // card id -> username to @mention, when replying from a specific
                                   // history comment instead of the card's original tagger
+let replyDraft = null;           // live text of the open reply box — re-renders happen constantly
+                                  // (any move/delete/drop, even on a different card), and without
+                                  // this a half-typed reply would just vanish under you
 
 function defaultReplyUser(card) {
   return replyDefaultUser[card.id] || card.actorUser || '';
@@ -60,7 +63,7 @@ function itemHtml(card) {
        clicking "Open card" — see the boardEl click handler below. */
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
-      '<div class="t">' + esc(heading) + '</div>' +
+      '<div class="t" title="' + esc(heading) + '">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
@@ -153,7 +156,7 @@ function replyBoxHtml(card) {
     '<button class="chip" data-q="' + esc(q) + '">' + esc(q) + '</button>'
   ).join('');
   const defaultUser = defaultReplyUser(card);
-  const defaultText = defaultUser ? '@' + defaultUser + ' ' : '';
+  const defaultText = replyDraft !== null ? replyDraft : (defaultUser ? '@' + defaultUser + ' ' : '');
   return (
     '<div class="reply">' +
       '<div class="quick">' + quick + '</div>' +
@@ -205,7 +208,7 @@ async function loadHistory(id) {
 function render(cards) {
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
-  if (replyingId && !cardsById[replyingId]) replyingId = null;   // card moved/deleted elsewhere
+  if (replyingId && !cardsById[replyingId]) { replyingId = null; replyDraft = null; }   // card deleted elsewhere
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
     const items = cards.filter((c) => c.column === col.id);
@@ -256,6 +259,7 @@ function insertMention(ta, item, username) {
   const before = ta.value.slice(0, at);
   const after = ta.value.slice(ta.selectionStart || 0);
   ta.value = before + '@' + username + ' ' + after;
+  replyDraft = ta.value;
   const pos = (before + '@' + username + ' ').length;
   ta.focus();
   ta.setSelectionRange(pos, pos);
@@ -285,6 +289,7 @@ async function sendReply(item, card) {
   if (res && res.ok) {
     status.textContent = 'Sent';
     replyingId = null;
+    replyDraft = null;
     delete replyDefaultUser[card.id];
     if (historyOpen.has(card.id)) { delete historyCache[card.id]; loadHistory(card.id); }
     try { await QA.moveCard(card.id, 'done'); } catch (e) {}
@@ -365,6 +370,7 @@ boardEl.addEventListener('click', async (e) => {
     const c = cache && cache.ok && cache.comments[idx];
     replyDefaultUser[id] = (c && c.by) || '';
     replyingId = id;
+    replyDraft = null;   // a fresh box, targeting a specific comment — not a continuation of any draft
     render(Object.values(cardsById));
     return;
   }
@@ -377,12 +383,14 @@ boardEl.addEventListener('click', async (e) => {
       replyingId = id;
       delete replyDefaultUser[id];   // opened from the card itself — default to the original tagger
     }
+    replyDraft = null;
     render(Object.values(cardsById));
     return;
   }
   if (e.target.classList.contains('cancel-reply')) {
     delete replyDefaultUser[replyingId];
     replyingId = null;
+    replyDraft = null;
     render(Object.values(cardsById));
     return;
   }
@@ -398,6 +406,7 @@ boardEl.addEventListener('click', async (e) => {
     const user = defaultReplyUser(card);
     const at = user ? '@' + user + ' ' : '';
     ta.value = at + e.target.dataset.q;
+    replyDraft = ta.value;
     ta.focus();
     ta.setSelectionRange(ta.value.length, ta.value.length);
     closeMentionList(item);
@@ -442,6 +451,7 @@ boardEl.addEventListener('mousedown', (e) => {
 
 boardEl.addEventListener('input', (e) => {
   if (!e.target.classList.contains('reply-in')) return;
+  replyDraft = e.target.value;
   const item = e.target.closest('.item');
   const card = cardsById[item.dataset.id];
   maybeSuggest(e.target, item, card.cardId);
@@ -469,7 +479,7 @@ boardEl.addEventListener('keydown', (e) => {
   if (open && (e.key === 'Enter' || e.key === 'Tab')) { e.preventDefault(); insertMention(e.target, item, picks[sel].username); return; }
   if (open && e.key === 'Escape') { e.preventDefault(); closeMentionList(item); return; }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(item, cardsById[item.dataset.id]); }
-  if (e.key === 'Escape') { replyingId = null; render(Object.values(cardsById)); }
+  if (e.key === 'Escape') { replyingId = null; replyDraft = null; render(Object.values(cardsById)); }
 });
 
 /* ---------- drag and drop between columns ---------- */
