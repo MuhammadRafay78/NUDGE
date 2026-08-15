@@ -65,17 +65,22 @@ const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
 const expanded = new Set();   // card ids currently showing full text, survives a refresh
 
 function itemHtml(card) {
-  const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Open &rarr;</a>' : '';
+  const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const body = card.body || '';
   const long = body.length > LONG_BODY;
   const isOpen = expanded.has(card.id);
+  /* Lead with the client/card name — that's what matters at a glance. The
+     generic "X tagged you" line becomes a small byline underneath (or, for a
+     hand-typed card with no client name yet, it's all there is). */
+  const heading = card.context || card.title;
+  const byline = card.context ? card.title : '';
   return (
     '<div class="item" data-id="' + esc(card.id) + '">' +
-      '<div class="t">' + esc(card.title) + '</div>' +
-      (card.context ? '<div class="ctx">' + esc(card.context) + '</div>' : '') +
+      '<div class="t">' + esc(heading) + '</div>' +
+      (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
