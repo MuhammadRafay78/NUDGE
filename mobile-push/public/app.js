@@ -70,6 +70,13 @@ async function init() {
   const saved = localStorage.getItem('nudgeCode');
   const existing = await existingSubscription(reg);
   if (saved && existing) {
+    /* Already paired — this page is the one-time setup flow, not something to
+       land on every time the Home Screen icon is tapped. Go straight to the
+       board; the code / test / unpair screen is still one tap away from there. */
+    if (!new URLSearchParams(location.search).has('settings')) {
+      location.replace('/board.html');
+      return;
+    }
     showCode(saved);
     return;
   }
