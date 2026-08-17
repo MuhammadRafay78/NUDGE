@@ -2056,7 +2056,164 @@ var QA = (function () {
     };
   }
 
+  /* ---------- Gmail ----------
+     Same idea as Canopy: gmail-watch.js sits on mail.google.com as a declared
+     content script and answers when asked, rather than being injected fresh
+     each time. Read-only — it never clicks, sends, or changes anything. */
 
+  function isGmail(url) {
+    return /^https?:\/\/mail\.google\.com\//i.test(url || '');
+  }
+
+  async function gmailRead(preferTabId) {
+    const problems = [];
+
+    const boot = async function (id) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: id, allFrames: false }, files: ['gmail-watch.js']
+        });
+        return true;
+      } catch (e) {
+        problems.push('tab ' + id + ' (loading the reader): ' + ((e && e.message) || e));
+        return false;
+      }
+    };
+
+    const ask = async (id, label) => {
+      try {
+        const r = await new Promise(function (resolve) {
+          let settled = false;
+          const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+          setTimeout(function () { done({ __timeout: true }); }, 2500);
+          try {
+            chrome.tabs.sendMessage(id, { type: 'gmailRead' }, function (resp) {
+              const err = chrome.runtime && chrome.runtime.lastError;
+              done(err ? { __error: err.message } : resp);
+            });
+          } catch (e) {
+            done({ __error: String((e && e.message) || e) });
+          }
+        });
+        if (r && r.ok) return r;
+        problems.push('tab ' + id + ' (content script' + (label || '') + '): ' +
+          (r && r.__timeout ? 'no answer in 2.5s'
+            : r && r.__error ? r.__error
+              : (r && r.error) ? r.error
+                : 'answered but was rejected'));
+      } catch (e) {
+        problems.push('tab ' + id + ' (content script' + (label || '') + '): ' + ((e && e.message) || e));
+      }
+      return null;
+    };
+
+    const ids = [];
+    if (preferTabId) ids.push(preferTabId);
+    try {
+      const tabs = await chrome.tabs.query({ url: ['*://mail.google.com/*'] });
+      (tabs || []).forEach(function (t) { if (t.id && ids.indexOf(t.id) === -1) ids.push(t.id); });
+    } catch (e) {
+      problems.push('could not list tabs: ' + ((e && e.message) || e));
+    }
+
+    for (const id of ids) {
+      const said = await ask(id);
+      if (said) return said;
+      if (await boot(id)) {
+        const said2 = await ask(id, ', after loading it');
+        if (said2) return said2;
+      }
+    }
+
+    return {
+      ok: false,
+      error: ids.length ? 'Could not read the Gmail page.' : 'No Gmail tab is open.',
+      problems: problems
+    };
+  }
+
+  function buildGmailContext(gmail) {
+    const out = [];
+    out.push('TODAY: ' + new Date().toString());
+    out.push('GMAIL PAGE: ' + (gmail.url || ''));
+    if (gmail.subject) out.push('SUBJECT: ' + gmail.subject);
+    if ((gmail.participants || []).length) out.push('PARTICIPANTS: ' + gmail.participants.join(', '));
+    if ((gmail.messages || []).length) {
+      out.push('');
+      out.push('MESSAGES IN THIS THREAD (as shown on screen):');
+      gmail.messages.forEach(function (m, i) {
+        out.push('--- message ' + (i + 1) + (m.from ? ' from ' + m.from : '') + (m.when ? ' (' + m.when + ')' : '') + ' ---');
+        out.push(m.body || '(no body captured)');
+      });
+    }
+    if ((gmail.inboxRows || []).length) {
+      out.push('');
+      out.push('VISIBLE ROWS (an inbox / search / label list, not a single open thread):');
+      gmail.inboxRows.slice(0, 40).forEach(function (r) {
+        out.push('- ' + (r.from || '?') + ' — ' + (r.subject || '(no subject)') +
+          (r.snippet ? ': ' + r.snippet : '') + (r.date ? ' [' + r.date + ']' : ''));
+      });
+    }
+    if (gmail.pageText) {
+      out.push('');
+      out.push('RAW VISIBLE TEXT ON THE PAGE (fallback, may include noise or repeat the above):');
+      out.push(gmail.pageText);
+    }
+    let ctx = out.join('\n');
+    if (ctx.length > 12000) ctx = ctx.slice(0, 12000) + '\n…(truncated)';
+    return ctx;
+  }
+
+  const GMAIL_QA_SYSTEM = [
+    'You answer a tax professional\'s question about a client using only what is visible on the Gmail tab he has open right now — an email thread or an inbox/search list.',
+    'You are given SUBJECT, PARTICIPANTS, MESSAGES (or visible rows from a list), and sometimes raw visible page text as a fallback.',
+    'Rules:',
+    '1. Answer ONLY from the context given. Never invent a name, date, amount, or detail not present.',
+    '2. If this page is not about the client asked about, or the answer is not there, say so plainly — e.g. "This thread is not about that client" or "That is not mentioned here."',
+    '3. Be brief and concrete. Quote the relevant line rather than paraphrasing it away.',
+    '4. Plain prose, no markdown headers, no restating the question.'
+  ].join('\n');
+
+  /* Gemini, not Claude — reuses the same key as "Sort mentions" and the daily
+     update, rather than asking for a third. */
+  async function answerAboutGmail(question, gmail) {
+    const cfg = await getTriage();
+    if (!cfg.apiKey) {
+      const e = new Error('No Gemini key yet. Open Settings → Sort mentions and paste your Google AI Studio key.');
+      e.needsKey = true;
+      throw e;
+    }
+    const context = buildGmailContext(gmail);
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+      encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent';
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: GMAIL_QA_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: 'CONTEXT:\n' + context + '\n\nQUESTION: ' + question }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 350 }
+        })
+      });
+    } catch (e) {
+      throw new Error('Could not reach Gemini (offline?): ' + ((e && e.message) || e));
+    }
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = (body && body.error && body.error.message) || '';
+      } catch (e) { /* the status is enough */ }
+      throw new Error(triageError(res.status, detail));
+    }
+    const body = await res.json();
+    const parts = (((body.candidates || [])[0] || {}).content || {}).parts;
+    const text = (parts || []).map(function (p) { return p.text || ''; }).join('\n').trim();
+    return { text: text || '(empty answer)' };
+  }
 
   /* ---------- ask-a-question, answered locally ----------
      No AI, no key, no network: your question is turned into search terms and run
@@ -4095,6 +4252,7 @@ var QA = (function () {
     setCustomDate, getCustomDate, customDateLabel,
     fetchTrelloNotifications, trelloResults, isTrello, TRELLO_SNAPKEY,
     isCanopy, readCanopyPage, canopyRead, canopyDump, dumpPage,
+    isGmail, gmailRead, buildGmailContext, answerAboutGmail,
     postTrelloComment, replyToCard, replyErrorMessage, QUICK_REPLIES,
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
