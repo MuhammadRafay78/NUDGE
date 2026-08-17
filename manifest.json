@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Nudge",
-  "version": "7.6.0",
-  "description": "Who tagged you on Trello, one at a time, sorted into what needs you \u2014 plus a weekly follow-up draft per card, and a read of whatever Canopy page you are on.",
+  "version": "7.7.0",
+  "description": "Who tagged you on Trello, one at a time, sorted into what needs you \u2014 plus a weekly follow-up draft per card, a read of whatever Canopy page you are on, and answers about a client from the Gmail thread in front of you.",
   "permissions": [
     "storage",
     "scripting",
@@ -54,6 +54,15 @@
       ],
       "js": [
         "canopy-watch.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://mail.google.com/*"
+      ],
+      "js": [
+        "gmail-watch.js"
       ],
       "run_at": "document_idle"
     }

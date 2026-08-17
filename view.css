@@ -114,7 +114,21 @@ html { overflow-x: hidden; }
 .place span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* ---------- Canopy ---------- */
 .card.canopy { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
-.card.canopy .chead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.card.canopy .chead, .card.gmail .chead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+/* ---------- Gmail ---------- */
+.card.gmail { border-color: color-mix(in srgb, #ea4335 35%, var(--line)); }
+.card.gmail .ctag { background: #ea4335; }
+.gask { display: flex; gap: 7px; margin-top: 14px; }
+.gask input {
+  flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 8px 11px;
+  border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+.gask input::placeholder { color: var(--faint); }
+.gask input:focus { outline: none; border-color: var(--accent); }
+.ganswer { margin-top: 10px; font-size: 13px; color: var(--fg); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ganswer:empty { display: none; }
+.ganswer.bad { color: var(--accent); }
 .ctag {
   font-size: 10px; font-weight: 700; letter-spacing: .08em; padding: 3px 6px;
   border-radius: 5px; background: var(--accent); color: #fff;

@@ -878,20 +878,22 @@ function ledgerBox(item) {
    The Canopy read used to sit above the mentions and take over the panel. It is
    reference material about where you are standing, not something that needs you,
    so it gets its own tab and the mentions get theirs. */
+const VIEWS = ['trello', 'canopy', 'gmail'];
 let VIEW = 'trello';
 
 async function loadView() {
   try {
     const got = await chrome.storage.local.get({ nudgeView: 'trello' });
-    VIEW = got.nudgeView === 'canopy' ? 'canopy' : 'trello';
+    VIEW = VIEWS.indexOf(got.nudgeView) > -1 ? got.nudgeView : 'trello';
   } catch (e) { VIEW = 'trello'; }
 }
 
 function setView(next, opts) {
-  VIEW = next === 'canopy' ? 'canopy' : 'trello';
+  VIEW = VIEWS.indexOf(next) > -1 ? next : 'trello';
   try { chrome.storage.local.set({ nudgeView: VIEW }); } catch (e) { /* not fatal */ }
   if (!opts || !opts.quiet) draw();
   if (VIEW === 'canopy' && !CANOPY) readCanopy(false).then(draw).catch(() => {});
+  if (VIEW === 'gmail' && !GMAIL) readGmail(false).then(draw).catch(() => {});
 }
 
 function drawTabs() {
@@ -899,7 +901,7 @@ function drawTabs() {
   if (!tabs) return;
   const onCanopy = !!(TAB && QA.isCanopy(TAB.url));
 
-  [['trello', 'tab-trello'], ['canopy', 'tab-canopy']].forEach(([name, id]) => {
+  [['trello', 'tab-trello'], ['canopy', 'tab-canopy'], ['gmail', 'tab-gmail']].forEach(([name, id]) => {
     const b = el(id);
     if (!b) return;
     b.classList.toggle('on', VIEW === name);
@@ -930,9 +932,16 @@ function drawTabs() {
       c.hidden = true;
     }
   }
+  const g = el('tnum-gmail');
+  if (g) {
+    const unread = (GMAIL && GMAIL.ok && (GMAIL.inboxRows || []).filter((r) => r.unread).length) || 0;
+    g.textContent = unread;
+    g.className = 'tnum quiet';
+    g.hidden = !unread;
+  }
 }
 
-/* the filter row and the Ask box belong to the mentions, not to Canopy */
+/* the filter row and the Ask box belong to the mentions, not to Canopy or Gmail */
 function showTrelloChrome(on) {
   /* These were set with the `hidden` attribute, which did nothing: .bar and .ask
      both set `display: flex` in the stylesheet, and a class beats the browser's
@@ -964,6 +973,23 @@ function canopyTabBody() {
   return d;
 }
 
+function gmailTabBody() {
+  const card = gmailCard();
+  if (card) return card;
+  const d = document.createElement('div');
+  d.className = 'empty';
+  const big = document.createElement('div');
+  big.className = 'big';
+  const small = document.createElement('div');
+  small.className = 'small';
+  big.textContent = 'Not on Gmail';
+  small.textContent = 'Open a thread in Gmail and ask about the client it is about — '
+    + 'the answer only ever uses what is actually on that page.';
+  d.appendChild(big);
+  d.appendChild(small);
+  return d;
+}
+
 function draw() {
   buildQueue();
   drawDates();
@@ -978,6 +1004,11 @@ function draw() {
 
   if (VIEW === 'canopy') {
     wrap.appendChild(canopyTabBody());
+    return;
+  }
+
+  if (VIEW === 'gmail') {
+    wrap.appendChild(gmailTabBody());
     return;
   }
 
@@ -1405,6 +1436,145 @@ function canopyCard() {
   return c;
 }
 
+/* ---------- Gmail ----------
+   When you are on Gmail, show what is actually on the screen — the open
+   thread's subject and who is on it, or the visible rows if you are looking
+   at a list — and let you ask about the client it concerns. The answer only
+   ever uses this same read, never anything fetched separately. Read-only. */
+
+let GMAIL = null;
+let GMAIL_AT = 0;
+let GMAIL_ANSWER = null;   // { question, text } | { question, error } | null
+
+async function readGmail(force) {
+  if (!TAB || !QA.isGmail(TAB.url)) { GMAIL = null; GMAIL_ANSWER = null; return; }
+  if (!force && GMAIL && Date.now() - GMAIL_AT < 4000) return;
+  GMAIL = await QA.gmailRead(TAB.id);
+  GMAIL_AT = Date.now();
+}
+
+function gmailCard() {
+  if (!GMAIL) return null;
+  const c = document.createElement('div');
+  c.className = 'card gmail';
+
+  const head = document.createElement('div');
+  head.className = 'chead';
+  const tag = document.createElement('span');
+  tag.className = 'ctag';
+  tag.textContent = 'GMAIL';
+  head.appendChild(tag);
+
+  const who = document.createElement('div');
+  who.className = 'cwho';
+  who.textContent = GMAIL.ok && GMAIL.threadOpen
+    ? (GMAIL.subject || '(no subject read)')
+    : GMAIL.ok ? 'Inbox / list view' : 'Gmail';
+  head.appendChild(who);
+  c.appendChild(head);
+
+  if (!GMAIL.ok) {
+    const e = document.createElement('div');
+    e.className = 'err';
+    e.textContent = GMAIL.error || 'Could not read this Gmail page.';
+    c.appendChild(e);
+    if ((GMAIL.problems || []).length) {
+      const pre = document.createElement('pre');
+      pre.className = 'debug';
+      pre.textContent = GMAIL.problems.join('\n');
+      c.appendChild(pre);
+    }
+    const again = document.createElement('button');
+    again.className = 'btn';
+    again.textContent = 'Try again';
+    again.addEventListener('click', async () => {
+      again.textContent = 'Reading…';
+      await readGmail(true);
+      draw();
+    });
+    const acts0 = document.createElement('div');
+    acts0.className = 'acts';
+    acts0.appendChild(again);
+    c.appendChild(acts0);
+    return c;
+  }
+
+  if ((GMAIL.participants || []).length) {
+    c.appendChild(row('With', GMAIL.participants.join(', ')));
+  }
+  if (GMAIL.threadOpen) {
+    c.appendChild(row('Read', GMAIL.messages.length + ' message' + (GMAIL.messages.length === 1 ? '' : 's') + ' on screen'));
+  } else if ((GMAIL.inboxRows || []).length) {
+    const unread = GMAIL.inboxRows.filter((r) => r.unread).length;
+    c.appendChild(row('Read', GMAIL.inboxRows.length + ' row' + (GMAIL.inboxRows.length === 1 ? '' : 's') +
+      (unread ? ' · ' + unread + ' unread' : '')));
+  }
+
+  /* ---- ask about the client this page is open to ---- */
+  const askWrap = document.createElement('div');
+  askWrap.className = 'gask';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Ask: what does this client still owe us?';
+  askWrap.appendChild(input);
+  const askBtn = document.createElement('button');
+  askBtn.className = 'btn go';
+  askBtn.textContent = 'Ask';
+  askWrap.appendChild(askBtn);
+  c.appendChild(askWrap);
+
+  const answerEl = document.createElement('div');
+  answerEl.className = 'ganswer';
+  if (GMAIL_ANSWER) {
+    input.value = GMAIL_ANSWER.question;
+    if (GMAIL_ANSWER.error) {
+      answerEl.classList.add('bad');
+      answerEl.textContent = GMAIL_ANSWER.error;
+    } else {
+      answerEl.textContent = GMAIL_ANSWER.text;
+    }
+  }
+  c.appendChild(answerEl);
+
+  const ask = async () => {
+    const q = input.value.trim();
+    if (!q) return;
+    askBtn.disabled = true;
+    answerEl.className = 'ganswer';
+    answerEl.textContent = 'Thinking…';
+    try {
+      const res = await QA.answerAboutGmail(q, GMAIL);
+      GMAIL_ANSWER = { question: q, text: res.text };
+      answerEl.textContent = res.text;
+    } catch (e) {
+      const msg = (e && e.message) || 'Could not get an answer.';
+      GMAIL_ANSWER = { question: q, error: msg };
+      answerEl.className = 'ganswer bad';
+      answerEl.textContent = msg;
+    } finally {
+      askBtn.disabled = false;
+    }
+  };
+  askBtn.addEventListener('click', ask);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ask(); } });
+
+  const acts = document.createElement('div');
+  acts.className = 'acts';
+  const again = document.createElement('button');
+  again.className = 'btn';
+  again.textContent = 'Re-read';
+  again.addEventListener('click', async () => {
+    again.textContent = 'Reading…';
+    GMAIL_ANSWER = null;
+    await readGmail(true);
+    draw();
+  });
+  acts.appendChild(again);
+  c.appendChild(acts);
+
+  return c;
+}
+
 /* ---------- scan ---------- */
 
 async function refresh(opts) {
@@ -1415,8 +1585,9 @@ async function refresh(opts) {
   if (!quiet) UNDO = null;
   if (!quiet) el('count').textContent = 'Checking…';
 
-  /* if this is Canopy, read the page too — it is the reason you opened the panel */
+  /* if this is Canopy or Gmail, read the page too — it is the reason you opened the panel */
   try { await readCanopy(!quiet); } catch (e) { CANOPY = null; }
+  try { await readGmail(!quiet); } catch (e) { GMAIL = null; }
 
   /* Chrome blocks extensions on chrome:// pages, the Web Store and so on — but
      your Trello mentions have nothing to do with the page you are looking at, so
