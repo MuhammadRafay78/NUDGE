@@ -1196,25 +1196,114 @@ var QA = (function () {
 
   function replyErrorMessage(r) {
     if (!r) return 'No answer from Trello.';
+    if (r.stage === 'attach') {
+      if (r.status === 401 || r.status === 403) return 'Trello refused the image — open the card and check you are still signed in.';
+      if (r.status === 400 && !r.hadDsc) return 'Trello needs a fresh page — reload your Trello tab and try again.';
+      if (r.status) return 'Trello would not accept the image (' + r.status + '). Nothing was sent.';
+      return 'Could not upload the image: ' + (r.error || 'unknown') + '. Nothing was sent.';
+    }
     if (r.status === 401 || r.status === 403) return 'Trello refused the reply — open the card and check you are still signed in.';
     if (r.status === 400 && !r.hadDsc) return 'Trello needs a fresh page — reload your Trello tab and try again.';
     if (r.status) return 'Trello said no (' + r.status + '). Your reply was not posted.';
     return 'Could not post the reply: ' + (r.error || 'unknown') + '. Nothing was sent.';
   }
 
-  /* send a reply from the panel; needs an open Trello tab */
-  async function replyToCard(cardId, text) {
+  /* ---------- attaching an image to a reply ----------
+     Trello comments are plain text — there is no "attach a file to this
+     comment" call. Instead the image is uploaded as a card attachment first,
+     the same way Trello's own UI does it, and the comment references it with
+     a markdown image line so it also renders inline in the thread. */
+
+  const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+  function imageAttachError(file) {
+    if (!file) return 'That is not a file.';
+    if (!/^image\//.test(file.type)) return 'Only images can be attached here.';
+    if (file.size > MAX_IMAGE_BYTES) {
+      return 'That image is too big (' + (Math.round(file.size / 1024 / 1024 * 10) / 10) + ' MB) — 10 MB max.';
+    }
+    return '';
+  }
+
+  function pickImageFromTransfer(dt) {
+    if (!dt || !dt.files) return null;
+    for (let i = 0; i < dt.files.length; i++) {
+      if (/^image\//.test(dt.files[i].type)) return dt.files[i];
+    }
+    return null;
+  }
+
+  function pickImageFromClipboard(cd) {
+    if (!cd || !cd.items) return null;
+    for (let i = 0; i < cd.items.length; i++) {
+      if (cd.items[i].kind === 'file' && /^image\//.test(cd.items[i].type)) return cd.items[i].getAsFile();
+    }
+    return null;
+  }
+
+  /* Runs on the Trello page itself — same reason postTrelloComment does: it
+     needs the page's own login and dsc token, not the extension's. */
+  function uploadTrelloAttachment(cardId, file) {
+    return (async () => {
+      try {
+        if (!cardId) return { ok: false, error: 'no card id' };
+        const m = document.cookie.match(/(?:^|;\s*)dsc=([^;]+)/);
+        const dsc = m ? decodeURIComponent(m[1]) : '';
+        const form = new FormData();
+        form.set('file', file, file.name || 'image.png');
+        if (dsc) form.set('dsc', dsc);
+        const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) + '/attachments', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+          body: form
+        });
+        if (!res.ok) {
+          let t = '';
+          try { t = (await res.text()).slice(0, 200); } catch (e) {}
+          return { ok: false, status: res.status, body: t, hadDsc: !!dsc };
+        }
+        let j = null;
+        try { j = await res.json(); } catch (e) {}
+        return { ok: true, id: j && j.id, url: j && j.url, name: (j && j.name) || file.name };
+      } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+      }
+    })();
+  }
+
+  /* send a reply from the panel, optionally with one image; needs an open Trello tab */
+  async function replyToCard(cardId, text, file) {
     const body = normalize(text);
-    if (!body) return { ok: false, error: 'empty' };
+    if (!body && !file) return { ok: false, error: 'empty' };
     const tabs = await chrome.tabs.query({ url: ['*://trello.com/*', '*://*.trello.com/*'] });
     const tab = (tabs || []).filter((t) => t.id)[0];
     if (!tab) return { ok: false, error: 'no Trello tab is open, so there is nothing to post through' };
+
+    let finalBody = body;
+    if (file) {
+      let att;
+      try {
+        const got = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: uploadTrelloAttachment,
+          args: [cardId, file]
+        });
+        att = (got && got[0] && got[0].result) || { ok: false, error: 'no result' };
+      } catch (e) {
+        att = { ok: false, error: String((e && e.message) || e) };
+      }
+      if (!att.ok) return Object.assign({ stage: 'attach' }, att);
+      finalBody = finalBody ? finalBody + '\n\n![' + att.name + '](' + att.url + ')' : '![' + att.name + '](' + att.url + ')';
+    }
+
     try {
       const got = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
         func: postTrelloComment,
-        args: [cardId, body]
+        args: [cardId, finalBody]
       });
       return (got && got[0] && got[0].result) || { ok: false, error: 'no result' };
     } catch (e) {
@@ -4254,6 +4343,7 @@ var QA = (function () {
     isCanopy, readCanopyPage, canopyRead, canopyDump, dumpPage,
     isGmail, gmailRead, buildGmailContext, answerAboutGmail,
     postTrelloComment, replyToCard, replyErrorMessage, QUICK_REPLIES,
+    MAX_IMAGE_BYTES, imageAttachError, pickImageFromTransfer, pickImageFromClipboard, uploadTrelloAttachment,
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,

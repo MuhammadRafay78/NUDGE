@@ -43,6 +43,40 @@ const replyDefaultUser = {};     // card id -> username to @mention, when replyi
 let replyDraft = null;           // live text of the modal's reply box — the modal is a separate DOM
                                   // tree from the board, so a board refresh never touches it, but the
                                   // modal's own comment-list reload does rebuild it, hence tracking this
+let attachedImage = null;        // { file, previewUrl } picked for the modal's reply box, or null
+
+function clearAttachedImage() {
+  if (attachedImage) URL.revokeObjectURL(attachedImage.previewUrl);
+  attachedImage = null;
+}
+
+function setAttachedImage(file) {
+  clearAttachedImage();
+  attachedImage = { file: file, previewUrl: URL.createObjectURL(file) };
+  paintImagePreview();
+}
+
+function paintImagePreview() {
+  const box = modalBoxEl.querySelector('.img-preview');
+  if (!box) return;
+  if (!attachedImage) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML =
+    '<img src="' + attachedImage.previewUrl + '" alt="">' +
+    '<span class="img-preview-name">' + esc(attachedImage.file.name) + '</span>' +
+    '<button class="img-preview-x" title="Remove image">&times;</button>';
+}
+
+/* A comment sent with an image ends with "![name](url)" — pulled back out
+   here so it renders as an actual picture instead of literal markdown, and
+   the readable text above it still runs through the normal tidy/escape
+   path untouched. */
+function extractImageMarkdown(text) {
+  const s = String(text == null ? '' : text);
+  const m = s.match(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)\s*$/);
+  if (!m) return { rest: s, image: null };
+  return { rest: s.slice(0, m.index).trim(), image: { alt: m[1] || 'image', url: m[2] } };
+}
 
 function defaultReplyUser(card) {
   return replyDefaultUser[card.id] || card.actorUser || '';
@@ -122,10 +156,16 @@ function modalCommentHtml(c, i) {
   const reactBtns = QA.REACTIONS.map((r) =>
     '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
   ).join('');
+  const { rest, image } = extractImageMarkdown(c.text);
+  const textHtml = rest ? '<div class="hist-text">' + esc(QA.tidyCommentText(rest)) + '</div>' : '';
+  const imgHtml = image
+    ? '<a href="' + esc(image.url) + '" target="_blank" rel="noreferrer">' +
+      '<img class="hist-img" src="' + esc(image.url) + '" alt="' + esc(image.alt) + '" loading="lazy"></a>'
+    : '';
   return (
     '<div class="modal-item" data-idx="' + i + '">' +
       '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
-      '<div class="hist-text">' + esc(QA.tidyCommentText(c.text)) + '</div>' +
+      textHtml + imgHtml +
       '<div class="hist-acts">' + reactBtns +
         '<button class="hist-reply-btn">Reply</button>' +
         '<span class="rnote"></span>' +
@@ -143,11 +183,14 @@ function composerHtml(card) {
   return (
     '<div class="quick">' + quick + '</div>' +
     '<div class="reply-wrap">' +
-      '<textarea class="reply-in" rows="2" placeholder="Reply… type @ to tag someone">' + esc(defaultText) + '</textarea>' +
+      '<textarea class="reply-in" rows="2" placeholder="Reply… type @ to tag someone, or drop an image">' + esc(defaultText) + '</textarea>' +
       '<div class="mention-list" hidden></div>' +
     '</div>' +
+    '<div class="img-preview" hidden></div>' +
     '<div class="reply-acts">' +
       '<button class="btn go send-reply">Send reply</button>' +
+      '<button class="btn attach-btn" title="Attach an image">&#128206; Image</button>' +
+      '<input type="file" class="attach-input" accept="image/*" hidden>' +
       '<span class="reply-status"></span>' +
     '</div>'
   );
@@ -192,6 +235,7 @@ function renderModal(focusComposer) {
   if (!card) { closeModal(); return; }
   modalBoxEl.innerHTML = modalHtml(card);
   modalEl.hidden = false;
+  paintImagePreview();
   if (focusComposer) {
     const ta = modalBoxEl.querySelector('.reply-in');
     if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -209,6 +253,7 @@ function openModal(id, focusComposer) {
 function closeModal() {
   modalCardId = null;
   replyDraft = null;
+  clearAttachedImage();
   modalEl.hidden = true;
   modalBoxEl.innerHTML = '';
 }
@@ -306,14 +351,19 @@ async function sendReply() {
   const sendBtn = modalBoxEl.querySelector('.send-reply');
   if (!card || !ta) return;
   const text = (ta.value || '').trim();
-  if (!text || text === '@' + defaultReplyUser(card)) { ta.focus(); return; }
+  const textIsJustMention = text === '@' + defaultReplyUser(card);
+  if ((!text || textIsJustMention) && !attachedImage) { ta.focus(); return; }
   sendBtn.disabled = true;
   status.className = 'reply-status';
-  status.textContent = 'Sending…';
-  const res = await QA.replyToCard(card.cardId, text);
+  status.textContent = attachedImage ? 'Uploading image…' : 'Sending…';
+  /* Text left as-is even when it's just the default "@user " mention — with
+     an image attached that mention is still what makes Trello notify them,
+     it only gets blocked outright above when there's nothing else to send. */
+  const res = await QA.replyToCard(card.cardId, text, attachedImage && attachedImage.file);
   if (res && res.ok) {
     status.textContent = 'Sent';
     replyDraft = null;
+    clearAttachedImage();
     delete replyDefaultUser[card.id];
     try { await QA.moveCard(card.id, 'done'); } catch (e) {}
     loadHistory(card.id);   // refresh the thread in place — the modal stays open
@@ -470,6 +520,80 @@ modalEl.addEventListener('click', async (e) => {
     insertMention(e.target.closest('.mention-row').dataset.u);
     return;
   }
+
+  if (e.target.classList.contains('attach-btn')) {
+    const input = modalBoxEl.querySelector('.attach-input');
+    if (input) input.click();
+    return;
+  }
+
+  if (e.target.classList.contains('img-preview-x')) {
+    clearAttachedImage();
+    paintImagePreview();
+    return;
+  }
+});
+
+modalEl.addEventListener('change', (e) => {
+  if (!e.target.classList.contains('attach-input')) return;
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';   // so picking the same file twice still fires change
+  if (!file) return;
+  const status = modalBoxEl.querySelector('.reply-status');
+  const err = QA.imageAttachError(file);
+  if (err) {
+    if (status) { status.className = 'reply-status bad'; status.textContent = err; }
+    return;
+  }
+  if (status) { status.className = 'reply-status'; status.textContent = ''; }
+  setAttachedImage(file);
+});
+
+modalEl.addEventListener('dragover', (e) => {
+  if (!e.target.closest('.reply-wrap')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  e.target.closest('.reply-wrap').classList.add('drag-over');
+});
+
+modalEl.addEventListener('dragleave', (e) => {
+  const wrap = e.target.closest('.reply-wrap');
+  if (wrap) wrap.classList.remove('drag-over');
+});
+
+modalEl.addEventListener('drop', (e) => {
+  const wrap = e.target.closest('.reply-wrap');
+  if (!wrap) return;
+  e.preventDefault();
+  wrap.classList.remove('drag-over');
+  const file = QA.pickImageFromTransfer(e.dataTransfer);
+  const status = modalBoxEl.querySelector('.reply-status');
+  if (!file) {
+    if (status) { status.className = 'reply-status bad'; status.textContent = 'Drop an image file.'; }
+    return;
+  }
+  const err = QA.imageAttachError(file);
+  if (err) {
+    if (status) { status.className = 'reply-status bad'; status.textContent = err; }
+    return;
+  }
+  if (status) { status.className = 'reply-status'; status.textContent = ''; }
+  setAttachedImage(file);
+});
+
+modalEl.addEventListener('paste', (e) => {
+  if (!e.target.classList.contains('reply-in')) return;
+  const file = QA.pickImageFromClipboard(e.clipboardData);
+  if (!file) return;   // let a normal text paste through
+  e.preventDefault();
+  const err = QA.imageAttachError(file);
+  const status = modalBoxEl.querySelector('.reply-status');
+  if (err) {
+    if (status) { status.className = 'reply-status bad'; status.textContent = err; }
+    return;
+  }
+  if (status) { status.className = 'reply-status'; status.textContent = ''; }
+  setAttachedImage(file);
 });
 
 modalEl.addEventListener('mousedown', (e) => {
