@@ -380,6 +380,8 @@ function replyBox(item, card) {
   const box = document.createElement('div');
   box.className = 'reply';
 
+  let attachedImage = null;   // { file, previewUrl } | null
+
   let people = QA.mergePeople(
     item.actorUser ? [{ username: item.actorUser, fullName: item.actor || item.actorUser }] : [],
     QA.knownPeople(LAST)
@@ -409,7 +411,7 @@ function replyBox(item, card) {
   const ta = document.createElement('textarea');
   ta.className = 'reply-in';
   ta.rows = 2;
-  ta.placeholder = 'Reply to ' + (item.actor || 'them') + '… type @ to tag someone';
+  ta.placeholder = 'Reply to ' + (item.actor || 'them') + '… type @ to tag someone, or drop an image';
   // tag them back by default — a reply without it often goes unread
   if (item.actorUser) ta.value = '@' + item.actorUser + ' ';
   wrap.appendChild(ta);
@@ -419,6 +421,66 @@ function replyBox(item, card) {
   list.hidden = true;
   wrap.appendChild(list);
   box.appendChild(wrap);
+
+  const preview = document.createElement('div');
+  preview.className = 'img-preview';
+  preview.hidden = true;
+  box.appendChild(preview);
+
+  function clearImage() {
+    if (attachedImage) URL.revokeObjectURL(attachedImage.previewUrl);
+    attachedImage = null;
+    paintPreview();
+  }
+
+  function paintPreview() {
+    preview.innerHTML = '';
+    if (!attachedImage) { preview.hidden = true; return; }
+    preview.hidden = false;
+    const img = document.createElement('img');
+    img.src = attachedImage.previewUrl;
+    preview.appendChild(img);
+    const name = document.createElement('span');
+    name.className = 'img-preview-name';
+    name.textContent = attachedImage.file.name;
+    preview.appendChild(name);
+    const x = document.createElement('button');
+    x.className = 'img-preview-x';
+    x.title = 'Remove image';
+    x.textContent = '×';
+    x.addEventListener('click', clearImage);
+    preview.appendChild(x);
+  }
+
+  function tryAttach(file) {
+    const err = QA.imageAttachError(file);
+    if (err) {
+      status.className = 'reply-status bad';
+      status.textContent = err;
+      return;
+    }
+    status.className = 'reply-status';
+    status.textContent = '';
+    if (attachedImage) URL.revokeObjectURL(attachedImage.previewUrl);
+    attachedImage = { file: file, previewUrl: URL.createObjectURL(file) };
+    paintPreview();
+  }
+
+  wrap.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; wrap.classList.add('drag-over'); });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
+  wrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    wrap.classList.remove('drag-over');
+    const file = QA.pickImageFromTransfer(e.dataTransfer);
+    if (!file) { status.className = 'reply-status bad'; status.textContent = 'Drop an image file.'; return; }
+    tryAttach(file);
+  });
+  ta.addEventListener('paste', (e) => {
+    const file = QA.pickImageFromClipboard(e.clipboardData);
+    if (!file) return;   // let a normal text paste through
+    e.preventDefault();
+    tryAttach(file);
+  });
 
   function closeList() {
     list.hidden = true;
@@ -468,26 +530,47 @@ function replyBox(item, card) {
   const send = document.createElement('button');
   send.className = 'btn go';
   send.textContent = 'Send reply';
+  const attachBtn = document.createElement('button');
+  attachBtn.className = 'btn attach-btn';
+  attachBtn.title = 'Attach an image';
+  attachBtn.textContent = '📎';
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*';
+  fileInput.hidden = true;
   const cancel = document.createElement('button');
   cancel.className = 'btn';
   cancel.textContent = 'Cancel';
   const status = document.createElement('span');
   status.className = 'reply-status';
   row.appendChild(send);
+  row.appendChild(attachBtn);
+  row.appendChild(fileInput);
   row.appendChild(cancel);
   row.appendChild(status);
   box.appendChild(row);
+
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = '';
+    if (file) tryAttach(file);
+  });
 
   cancel.addEventListener('click', () => { REPLYING = null; draw(); });
 
   async function doSend() {
     const text = (ta.value || '').trim();
-    if (!text || text === '@' + (item.actorUser || '')) { ta.focus(); return; }
+    const textIsJustMention = text === '@' + (item.actorUser || '');
+    if ((!text || textIsJustMention) && !attachedImage) { ta.focus(); return; }
     send.disabled = true;
     cancel.disabled = true;
     status.className = 'reply-status';
-    status.textContent = 'Sending…';
-    const res = await QA.replyToCard(item.cardId, text);
+    status.textContent = attachedImage ? 'Uploading image…' : 'Sending…';
+    /* Text left as-is even when it's just the default "@user " mention — with
+       an image attached that mention is still what makes Trello notify them,
+       it only gets blocked outright above when there's nothing else to send. */
+    const res = await QA.replyToCard(item.cardId, text, attachedImage && attachedImage.file);
     if (res && res.ok) {
       status.textContent = 'Sent';
       REPLYING = null;
