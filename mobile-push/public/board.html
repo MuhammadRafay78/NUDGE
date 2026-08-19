@@ -74,15 +74,22 @@
 
   .status { color: var(--muted); font-size: 13px; padding: 0 16px; }
 
-  /* ---- "Open card" — the full card, tapped open from its tile ---- */
+  /* ---- "Open card" — the full card, tapped open from its tile ----
+     `vh` on a phone browser is sized against the tallest the viewport can
+     get (address bar collapsed), not what's actually on screen right now —
+     with the address bar showing, a sheet sized in vh renders taller than
+     the visible area and its last lines are cut off below the fold, not
+     scrolled to. `dvh` tracks the real, current viewport instead; the vh
+     rule stays first as a fallback for browsers that don't know dvh. */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 50;
     display: flex; align-items: flex-end; justify-content: center; }
   .modal-backdrop[hidden] { display: none; }
   .modal-box { background: var(--bg); border-radius: 16px 16px 0 0; width: 100%; max-width: 480px;
-    max-height: 86vh; display: flex; flex-direction: column; box-shadow: 0 -8px 30px rgba(0, 0, 0, .3); }
+    max-height: 86vh; max-height: 86dvh; display: flex; flex-direction: column;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, .3); }
   @media (min-width: 520px) {
     .modal-backdrop { align-items: center; padding: 6vh 16px; }
-    .modal-box { border-radius: 16px; max-height: 88vh; }
+    .modal-box { border-radius: 16px; max-height: 88vh; max-height: 88dvh; }
   }
   .modal-head { position: relative; padding: 16px 46px 14px 18px; border-bottom: 1px solid var(--line); }
   .modal-head .t { font-weight: 700; font-size: 16.5px; margin-bottom: 2px; overflow-wrap: anywhere; }
@@ -93,13 +100,14 @@
   .modal-close { position: absolute; top: 10px; right: 10px; width: 34px; height: 34px;
     border-radius: 8px; border: none; background: none; color: var(--muted); font-size: 20px;
     line-height: 1; cursor: pointer; }
-  .modal-body { padding: 14px 18px 20px; overflow-y: auto; flex: 1 1 auto;
-    font-size: 13.5px; color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }
+  .modal-body { padding: 14px 18px calc(20px + env(safe-area-inset-bottom)); overflow-y: auto;
+    -webkit-overflow-scrolling: touch; flex: 1 1 auto; min-height: 0;
+    font-size: 14.5px; color: var(--fg); line-height: 1.55; overflow-wrap: anywhere; }
   .modal-body > div:first-child { margin-top: 0 !important; }
-  .modal-body .h { color: var(--accent); font-size: 13px; margin: 12px 0 4px; }
-  .modal-body .li { position: relative; margin: 4px 0; padding-left: 15px; }
+  .modal-body .h { color: var(--accent); font-size: 13.5px; margin: 12px 0 4px; }
+  .modal-body .li { position: relative; margin: 5px 0; padding-left: 15px; }
   .modal-body .li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
-  .modal-body .p { margin: 8px 0; }
+  .modal-body .p { margin: 9px 0; }
   .modal-body .empty { color: var(--muted); padding: 0; text-align: left; }
 </style>
 </head>
