@@ -3,8 +3,7 @@
 const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
 const warnEl = document.getElementById('notConfigured');
-const newTitle = document.getElementById('newTitle');
-const addBtn = document.getElementById('addBtn');
+const cardSearch = document.getElementById('cardSearch');
 const backfillBtn = document.getElementById('backfillBtn');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
@@ -35,6 +34,8 @@ const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
 const expanded = new Set();   // card ids currently showing full text, survives a refresh
 let dragging = false;         // suppress auto-refresh mid-drag so the drop target doesn't vanish
 let cardsById = {};            // last-rendered cards
+let lastCards = [];            // same, as a plain list — re-filtered on every search keystroke
+let searchQuery = '';          // live text of the search box, survives a refresh
 const peopleCache = {};        // cardId -> [{username, fullName}], fetched once per open
 let modalCardId = null;          // which card's "Open card" modal is showing, or null
 const historyCache = {};         // card id -> { loading } | { ok:true, comments } | { ok:false, error }
@@ -142,7 +143,6 @@ function itemHtml(card) {
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
-      (canReply ? reactRowHtml() : '') +
       /* Action pills get their own row so they can wrap on a narrow card
          without ever pulling "when"/delete along with them — those two stay
          paired on a fixed, always-two-item row underneath, so delete never
@@ -160,16 +160,6 @@ function itemHtml(card) {
       '</div>' +
     '</div>'
   );
-}
-
-/* Reactions on the card's own tagged comment — mirrors the popup's react row.
-   Matching happens by comment text (see QA.reactToMention), so this needs no
-   action id up front. */
-function reactRowHtml() {
-  const btns = QA.REACTIONS.map((r) =>
-    '<button class="emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + ' — react on this comment in Trello">' + r.emoji + '</button>'
-  ).join('');
-  return '<div class="react">' + btns + '<span class="rnote" data-role="rstatus"></span></div>';
 }
 
 /* ---------- "Open card" modal: just the comments, nothing else ----------
@@ -309,17 +299,29 @@ async function loadHistory(id, focusComposer) {
   if (modalCardId === id) renderModal(focusComposer);
 }
 
+function matchesSearch(card, q) {
+  if (!q) return true;
+  const hay = [card.context, card.title, card.body, card.due].filter(Boolean).join(' ').toLowerCase();
+  return hay.indexOf(q) > -1;
+}
+
 function render(cards) {
+  lastCards = cards;
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card deleted elsewhere
 
+  const q = searchQuery.trim().toLowerCase();
+  const visible = q ? cards.filter((c) => matchesSearch(c, q)) : cards;
+
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
-    const items = cards.filter((c) => c.column === col.id);
+    const total = cards.filter((c) => c.column === col.id);
+    const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
-        '<h2>' + col.label + ' <span class="n">' + items.length + '</span></h2>' +
-        (items.length ? items.map(itemHtml).join('') : '<div class="empty">Nothing here.</div>') +
+        '<h2>' + col.label + ' <span class="n">' + (q ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
+        (items.length ? items.map(itemHtml).join('')
+          : '<div class="empty">' + (q ? 'No matches here.' : 'Nothing here.') + '</div>') +
       '</div>'
     );
   }).join('');
@@ -407,34 +409,6 @@ async function sendReply() {
   }
 }
 
-/* Reacting to the card's own tagged comment (the board card's react row —
-   the modal's per-comment reactions are handled separately, in the modal's
-   own click handler below). */
-async function handleReactClick(e) {
-  const item = e.target.closest('.item');
-  const card = cardsById[item.dataset.id];
-  if (!card) return;
-  const r = QA.REACTIONS.filter((x) => x.emoji === e.target.dataset.emoji)[0];
-  if (!r) return;
-
-  const target = { cardId: card.cardId, text: card.body || card.title || '', actorUser: card.actorUser };
-  const scope = e.target.closest('.react');
-  const note = scope.querySelector('.rnote');
-  scope.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-  note.className = 'rnote';
-  note.textContent = 'Reacting…';
-  const res = await QA.reactToMention(target, r);
-  scope.querySelectorAll('button').forEach((b) => { b.disabled = false; });
-  if (!res || !res.ok) {
-    note.className = 'rnote bad';
-    note.textContent = QA.reactErrorMessage(res);
-    return;
-  }
-  e.target.classList.add('on');
-  note.className = 'rnote ok';
-  note.textContent = res.already ? r.emoji + ' already there' : r.emoji + ' added';
-}
-
 /* Every comment used to show its whole reaction row all the time — with a
    long thread that was a wall of emoji buttons repeated per reply. Now it's
    one small toggle per comment, and the row only opens on click. */
@@ -478,11 +452,6 @@ boardEl.addEventListener('click', async (e) => {
     const collapsed = b.classList.toggle('clamp');
     if (collapsed) expanded.delete(id); else expanded.add(id);
     e.target.textContent = collapsed ? 'Show more' : 'Show less';
-    return;
-  }
-
-  if (e.target.classList.contains('emo')) {
-    await handleReactClick(e);
     return;
   }
 
@@ -726,21 +695,10 @@ boardEl.addEventListener('drop', async (e) => {
   }
 });
 
-addBtn.addEventListener('click', async () => {
-  const title = newTitle.value.trim();
-  if (!title) return;
-  addBtn.disabled = true;
-  try {
-    await QA.createCard({ title: title, column: 'doing' });
-    newTitle.value = '';
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not add: ' + err.message;
-  } finally {
-    addBtn.disabled = false;
-  }
+cardSearch.addEventListener('input', () => {
+  searchQuery = cardSearch.value;
+  render(lastCards);
 });
-newTitle.addEventListener('keydown', (e) => { if (e.key === 'Enter') addBtn.click(); });
 
 /* ---------- backfill: fill in client name + due date for cards filed
    before that worked reliably. Needs an open Trello tab, same as the

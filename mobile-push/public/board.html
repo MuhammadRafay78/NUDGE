@@ -28,16 +28,11 @@
   .lede { color: var(--muted); font-size: 13px; margin: 0; }
   .back { color: var(--accent); text-decoration: none; font-size: 13px; }
 
-  .addRow { display: flex; gap: 8px; padding: 0 16px 14px; }
-  .addRow input {
-    flex: 1; font: inherit; padding: 10px 12px; border-radius: 9px;
+  .searchRow { padding: 0 16px 14px; }
+  .searchRow input {
+    width: 100%; font: inherit; padding: 10px 12px; border-radius: 9px;
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
-  .addRow button {
-    font: inherit; font-weight: 650; padding: 10px 14px; border-radius: 9px;
-    border: 1px solid var(--accent); background: var(--accent); color: #fff;
-  }
-  .addRow button:disabled { opacity: .5; }
 
   .board { display: flex; gap: 12px; overflow-x: auto; padding: 0 16px 8px;
            scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
@@ -115,9 +110,8 @@
   <p class="lede">Every tag lands in Inbox. Tap a card to open it; use the dropdown to move it as you work it.</p>
 </header>
 
-<div class="addRow">
-  <input type="text" id="newTitle" placeholder="Start a card…" maxlength="200">
-  <button id="addBtn">Start</button>
+<div class="searchRow">
+  <input type="text" id="cardSearch" placeholder="Search cards…" maxlength="200">
 </div>
 
 <div class="status" id="status"></div>

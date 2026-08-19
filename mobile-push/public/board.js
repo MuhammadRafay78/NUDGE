@@ -8,8 +8,7 @@ const COLUMNS = [
 const code = localStorage.getItem('nudgeCode');
 const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
-const newTitle = document.getElementById('newTitle');
-const addBtn = document.getElementById('addBtn');
+const cardSearch = document.getElementById('cardSearch');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 
@@ -52,14 +51,6 @@ async function deleteCard(id) {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code: code })
-  });
-}
-
-async function addCard(title) {
-  await api('/api/cards', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: code, title: title, column: 'doing' })
   });
 }
 
@@ -138,6 +129,8 @@ function modalHtml(card) {
 
 let modalCardId = null;
 let cardsById = {};
+let lastCards = [];    // re-filtered on every search keystroke, no refetch needed
+let searchQuery = '';
 
 function openModal(id) {
   const card = cardsById[id];
@@ -160,17 +153,29 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalCardId) closeModal();
 });
 
+function matchesSearch(card, q) {
+  if (!q) return true;
+  const hay = [card.context, card.title, card.body, card.due].filter(Boolean).join(' ').toLowerCase();
+  return hay.indexOf(q) > -1;
+}
+
 function render(cards) {
+  lastCards = cards;
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card moved/deleted elsewhere
 
+  const q = searchQuery.trim().toLowerCase();
+  const visible = q ? cards.filter((c) => matchesSearch(c, q)) : cards;
+
   boardEl.innerHTML = COLUMNS.map((col) => {
-    const items = cards.filter((c) => c.column === col.id);
+    const total = cards.filter((c) => c.column === col.id);
+    const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
-        '<h2>' + col.label + ' <span class="n">' + items.length + '</span></h2>' +
-        (items.length ? items.map(itemHtml).join('') : '<div class="empty">Nothing here.</div>') +
+        '<h2>' + col.label + ' <span class="n">' + (q ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
+        (items.length ? items.map(itemHtml).join('')
+          : '<div class="empty">' + (q ? 'No matches here.' : 'Nothing here.') + '</div>') +
       '</div>'
     );
   }).join('');
@@ -207,21 +212,10 @@ boardEl.addEventListener('click', async (e) => {
   if (item) openModal(item.dataset.id);
 });
 
-addBtn.addEventListener('click', async () => {
-  const title = newTitle.value.trim();
-  if (!title) return;
-  addBtn.disabled = true;
-  try {
-    await addCard(title);
-    newTitle.value = '';
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not add: ' + err.message;
-  } finally {
-    addBtn.disabled = false;
-  }
+cardSearch.addEventListener('input', () => {
+  searchQuery = cardSearch.value;
+  render(lastCards);
 });
-newTitle.addEventListener('keydown', (e) => { if (e.key === 'Enter') addBtn.click(); });
 
 async function load() {
   try {
