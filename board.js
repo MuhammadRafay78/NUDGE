@@ -82,6 +82,22 @@ function defaultReplyUser(card) {
   return replyDefaultUser[card.id] || card.actorUser || '';
 }
 
+/* A dense Trello note — often "**Header:** - item - item **Header:** - item"
+   run together with no real line breaks — read fine in Trello's own comment
+   box (which wraps around the markup as you type) but turns into one
+   unreadable wall of text once it is just plain-escaped here. This makes
+   "**bold**" real bold, and starts a new line before each bold run and
+   before every " - " list marker, so the same content reads as headers and
+   a list instead of one paragraph. Ordinary text with no markdown in it —
+   "Got it, thanks", "@nestor thanks" — passes through unchanged. */
+function formatCommentHtml(text) {
+  let t = esc(QA.tidyCommentText(text));
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  t = t.replace(/(.)(<b>)/g, '$1\n$2');
+  t = t.replace(/ - (?=\S)/g, '\n- ');
+  return t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean).join('\n');
+}
+
 function itemHtml(card) {
   /* A separate, clearly-labelled escape hatch to the real Trello page — kept
      small and secondary, since "Open card" opens the comment thread right
@@ -157,7 +173,7 @@ function modalCommentHtml(c, i) {
     '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
   ).join('');
   const { rest, image } = extractImageMarkdown(c.text);
-  const textHtml = rest ? '<div class="hist-text">' + esc(QA.tidyCommentText(rest)) + '</div>' : '';
+  const textHtml = rest ? '<div class="hist-text">' + formatCommentHtml(rest) + '</div>' : '';
   const imgHtml = image
     ? '<a href="' + esc(image.url) + '" target="_blank" rel="noreferrer">' +
       '<img class="hist-img" src="' + esc(image.url) + '" alt="' + esc(image.alt) + '" loading="lazy"></a>'
@@ -166,7 +182,9 @@ function modalCommentHtml(c, i) {
     '<div class="modal-item" data-idx="' + i + '">' +
       '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
       textHtml + imgHtml +
-      '<div class="hist-acts">' + reactBtns +
+      '<div class="hist-acts">' +
+        '<button class="react-toggle" title="React">&#128578;+</button>' +
+        '<div class="react-row" hidden>' + reactBtns + '</div>' +
         '<button class="hist-reply-btn">Reply</button>' +
         '<span class="rnote"></span>' +
       '</div>' +
@@ -403,6 +421,15 @@ async function handleReactClick(e) {
   note.textContent = res.already ? r.emoji + ' already there' : r.emoji + ' added';
 }
 
+/* Every comment used to show its whole reaction row all the time — with a
+   long thread that was a wall of emoji buttons repeated per reply. Now it's
+   one small toggle per comment, and the row only opens on click. */
+function toggleReactRow(toggleBtn) {
+  const row = toggleBtn.nextElementSibling;
+  if (!row || !row.classList.contains('react-row')) return;
+  row.hidden = !row.hidden;
+}
+
 async function handleModalReactClick(e) {
   const card = cardsById[modalCardId];
   if (!card) return;
@@ -480,6 +507,11 @@ boardEl.addEventListener('click', async (e) => {
 modalEl.addEventListener('click', async (e) => {
   if (e.target === modalEl || e.target.classList.contains('modal-close')) {
     closeModal();
+    return;
+  }
+
+  if (e.target.classList.contains('react-toggle')) {
+    toggleReactRow(e.target);
     return;
   }
 
