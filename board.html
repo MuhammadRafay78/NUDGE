@@ -86,11 +86,16 @@
       line-height: 1; cursor: pointer; }
     .modal-close:hover { background: var(--card); color: var(--fg); }
     .modal-body { padding: 14px 20px; overflow-y: auto; flex: 1 1 auto;
-      display: flex; flex-direction: column; gap: 14px; }
+      display: flex; flex-direction: column; gap: 10px; }
     .modal-status { color: var(--muted); font-size: 12.5px; }
     .modal-status.bad { color: var(--accent); font-size: 12.5px; font-weight: 550;
       background: var(--accent-soft); padding: 8px 10px; border-radius: 8px; }
-    .modal-item { min-width: 0; }
+    /* One message, one box — like a chat bubble, so a thread of several
+       replies reads as separate messages instead of one continuous block. */
+    .modal-item {
+      min-width: 0; background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 10px 12px 8px;
+    }
     .modal-item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
     .modal-item .hist-meta b { color: var(--fg); font-weight: 650; }
     .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }
@@ -135,8 +140,7 @@
   <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns to move it.</p>
 
   <div class="bar2">
-    <input type="text" id="newTitle" placeholder="Start a card…" maxlength="200">
-    <button class="btn go" id="addBtn">Start</button>
+    <input type="text" id="cardSearch" placeholder="Search cards…" maxlength="200">
     <span class="spacer" style="flex:1"></span>
     <input type="text" id="updateRecipient" placeholder="Update for…" maxlength="60" title="Who this daily update is addressed to">
     <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
