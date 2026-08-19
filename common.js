@@ -897,8 +897,12 @@ var QA = (function () {
         if (!lab || lab === url) return shortUrl(url);
         return lab;
       });
-    /* the same link left over twice in a row */
-    t = t.replace(/(\S+)(\s+\1\b)+/g, '$1');
+    /* the same link left over twice in a row. Requires a word character up
+       front so a punctuation-only token is left alone — "** **" (a closing
+       markdown-bold marker right before the next opening one) is not "the
+       same word twice", and collapsing it broke the pairing for every bold
+       segment after the first. */
+    t = t.replace(/(\w\S*)(\s+\1\b)+/g, '$1');
     /* A bare URL is fine; 70 characters of one is not. 45 is chosen so an ordinary
        Trello card link (about 35) is left alone while a Canopy docs link (about 57)
        is shortened — the first threshold I picked was 60 and missed it. */
