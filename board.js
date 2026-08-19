@@ -86,16 +86,30 @@ function defaultReplyUser(card) {
    run together with no real line breaks — read fine in Trello's own comment
    box (which wraps around the markup as you type) but turns into one
    unreadable wall of text once it is just plain-escaped here. This makes
-   "**bold**" real bold, and starts a new line before each bold run and
-   before every " - " list marker, so the same content reads as headers and
-   a list instead of one paragraph. Ordinary text with no markdown in it —
-   "Got it, thanks", "@nestor thanks" — passes through unchanged. */
+   "**bold**" real bold, splits it onto separate lines by section, and then
+   tells the three shapes that turn up apart so each gets its own look:
+   a bold line ending in ":" is a section header (its own color, spaced
+   above); any other bold-only line or a " - " item is a bullet under it;
+   everything else stays a plain line. Ordinary text with no markdown in it
+   — "Got it, thanks", "@nestor thanks" — passes through as a single plain
+   line, unchanged. */
 function formatCommentHtml(text) {
   let t = esc(QA.tidyCommentText(text));
   t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   t = t.replace(/(.)(<b>)/g, '$1\n$2');
   t = t.replace(/ - (?=\S)/g, '\n- ');
-  return t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean).join('\n');
+  const lines = t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean);
+
+  return lines.map((line) => {
+    const bareBold = line.match(/^<b>([^<]*)<\/b>$/);
+    if (bareBold) {
+      return /:\s*$/.test(bareBold[1])
+        ? '<div class="hist-h">' + line + '</div>'
+        : '<div class="hist-li">' + line + '</div>';
+    }
+    if (line.indexOf('- ') === 0) return '<div class="hist-li">' + line.slice(2) + '</div>';
+    return '<div class="hist-p">' + line + '</div>';
+  }).join('');
 }
 
 function itemHtml(card) {

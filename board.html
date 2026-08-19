@@ -93,7 +93,14 @@
     .modal-item { min-width: 0; }
     .modal-item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
     .modal-item .hist-meta b { color: var(--fg); font-weight: 650; }
-    .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }
+    .modal-item .hist-text > div:first-child { margin-top: 0 !important; }
+    .modal-item .hist-h { color: var(--accent); font-size: 12.5px; margin: 12px 0 4px; }
+    .modal-item .hist-li {
+      position: relative; margin: 4px 0; padding-left: 15px;
+    }
+    .modal-item .hist-li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
+    .modal-item .hist-p { margin: 8px 0; }
     .modal-item .hist-acts { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
     .modal-item .hist-acts .hist-reply-btn { color: var(--accent); font-size: 11.5px; background: none;
       border: none; padding: 0 0 0 4px; cursor: pointer; }
