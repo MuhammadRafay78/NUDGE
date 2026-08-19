@@ -153,10 +153,17 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalCardId) closeModal();
 });
 
-function matchesSearch(card, q) {
-  if (!q) return true;
-  const hay = [card.context, card.title, card.body, card.due].filter(Boolean).join(' ').toLowerCase();
-  return hay.indexOf(q) > -1;
+/* Every word typed must show up somewhere on the card, same as the
+   extension's board — "qtm3 dwight" finds a card whose client is QTM3
+   and whose body mentions Dwight, even if those words are far apart. */
+function searchTerms(q) {
+  return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function matchesSearch(card, terms) {
+  if (!terms.length) return true;
+  const hay = [card.context, card.title, card.body, card.due, card.actorUser].filter(Boolean).join(' ').toLowerCase();
+  return terms.every((t) => hay.indexOf(t) > -1);
 }
 
 function render(cards) {
@@ -165,17 +172,17 @@ function render(cards) {
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card moved/deleted elsewhere
 
-  const q = searchQuery.trim().toLowerCase();
-  const visible = q ? cards.filter((c) => matchesSearch(c, q)) : cards;
+  const terms = searchTerms(searchQuery);
+  const visible = terms.length ? cards.filter((c) => matchesSearch(c, terms)) : cards;
 
   boardEl.innerHTML = COLUMNS.map((col) => {
     const total = cards.filter((c) => c.column === col.id);
     const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
-        '<h2>' + col.label + ' <span class="n">' + (q ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
+        '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
         (items.length ? items.map(itemHtml).join('')
-          : '<div class="empty">' + (q ? 'No matches here.' : 'Nothing here.') + '</div>') +
+          : '<div class="empty">' + (terms.length ? 'No matches here.' : 'Nothing here.') + '</div>') +
       '</div>'
     );
   }).join('');

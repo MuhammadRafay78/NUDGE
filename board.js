@@ -4,6 +4,7 @@ const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
 const warnEl = document.getElementById('notConfigured');
 const cardSearch = document.getElementById('cardSearch');
+const cardSearchClear = document.getElementById('cardSearchClear');
 const backfillBtn = document.getElementById('backfillBtn');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
@@ -21,6 +22,17 @@ const updateAutoTime = document.getElementById('updateAutoTime');
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* Escapes first, then wraps whichever search terms actually appear —
+   so a match is visible right on the card instead of you having to
+   re-read the whole tile to work out why it showed up. */
+function hi(s, terms) {
+  const safe = esc(s);
+  if (!terms || !terms.length) return safe;
+  const pattern = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).filter(Boolean).join('|');
+  if (!pattern) return safe;
+  return safe.replace(new RegExp('(' + pattern + ')', 'ig'), '<mark>$1</mark>');
 }
 
 function mentionToken(ta) {
@@ -113,7 +125,7 @@ function formatCommentHtml(text) {
   }).join('');
 }
 
-function itemHtml(card) {
+function itemHtml(card, terms) {
   /* A separate, clearly-labelled escape hatch to the real Trello page — kept
      small and secondary, since "Open card" opens the comment thread right
      here instead of sending you to trello.com. */
@@ -138,10 +150,10 @@ function itemHtml(card) {
        clicking "Open card" — see the boardEl click handler below. */
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
-      '<div class="t" title="' + esc(heading) + '">' + esc(heading) + '</div>' +
-      (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
-      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
-      (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
+      '<div class="t" title="' + esc(heading) + '">' + hi(heading, terms) + '</div>' +
+      (byline ? '<div class="sub">' + hi(byline, terms) + '</div>' : '') +
+      (card.due ? '<div class="due">' + hi(card.due, terms) + '</div>' : '') +
+      (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + hi(body, terms) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
       /* Action pills get their own row so they can wrap on a narrow card
          without ever pulling "when"/delete along with them — those two stay
@@ -299,10 +311,18 @@ async function loadHistory(id, focusComposer) {
   if (modalCardId === id) renderModal(focusComposer);
 }
 
-function matchesSearch(card, q) {
-  if (!q) return true;
-  const hay = [card.context, card.title, card.body, card.due].filter(Boolean).join(' ').toLowerCase();
-  return hay.indexOf(q) > -1;
+/* Every word typed must show up somewhere on the card — not one contiguous
+   phrase — so "qtm3 dwight" finds a card whose client is QTM3 and whose
+   body mentions Dwight, even though those two words never sit next to
+   each other in the text. */
+function searchTerms(q) {
+  return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function matchesSearch(card, terms) {
+  if (!terms.length) return true;
+  const hay = [card.context, card.title, card.body, card.due, card.actorUser].filter(Boolean).join(' ').toLowerCase();
+  return terms.every((t) => hay.indexOf(t) > -1);
 }
 
 function render(cards) {
@@ -311,17 +331,18 @@ function render(cards) {
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card deleted elsewhere
 
-  const q = searchQuery.trim().toLowerCase();
-  const visible = q ? cards.filter((c) => matchesSearch(c, q)) : cards;
+  const terms = searchTerms(searchQuery);
+  const visible = terms.length ? cards.filter((c) => matchesSearch(c, terms)) : cards;
+  cardSearchClear.hidden = !searchQuery;
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
     const total = cards.filter((c) => c.column === col.id);
     const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
-        '<h2>' + col.label + ' <span class="n">' + (q ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
-        (items.length ? items.map(itemHtml).join('')
-          : '<div class="empty">' + (q ? 'No matches here.' : 'Nothing here.') + '</div>') +
+        '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
+        (items.length ? items.map((c) => itemHtml(c, terms)).join('')
+          : '<div class="empty">' + (terms.length ? 'No matches here.' : 'Nothing here.') + '</div>') +
       '</div>'
     );
   }).join('');
@@ -646,7 +667,31 @@ modalEl.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && modalCardId) closeModal();
+  if (e.key === 'Escape' && modalCardId) { closeModal(); return; }
+
+  if (e.key === 'Escape' && document.activeElement === cardSearch) {
+    cardSearch.value = '';
+    searchQuery = '';
+    render(lastCards);
+    cardSearch.blur();
+    return;
+  }
+
+  /* "/" jumps to search, same as Trello/GitHub/Slack — but not while
+     already typing somewhere, or it would eat the character itself. */
+  if (e.key === '/' && !modalCardId) {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    cardSearch.focus();
+  }
+});
+
+cardSearchClear.addEventListener('click', () => {
+  cardSearch.value = '';
+  searchQuery = '';
+  render(lastCards);
+  cardSearch.focus();
 });
 
 /* ---------- drag and drop between columns ---------- */
