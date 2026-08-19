@@ -10,6 +10,8 @@ const boardEl = document.getElementById('board');
 const statusEl = document.getElementById('status');
 const newTitle = document.getElementById('newTitle');
 const addBtn = document.getElementById('addBtn');
+const modalEl = document.getElementById('cardModal');
+const modalBoxEl = document.getElementById('cardModalBox');
 
 function ago(ms) {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
@@ -61,17 +63,12 @@ async function addCard(title) {
   });
 }
 
-const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
-const expanded = new Set();   // card ids currently showing full text, survives a refresh
-
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const body = card.body || '';
-  const long = body.length > LONG_BODY;
-  const isOpen = expanded.has(card.id);
   /* Lead with the client/card name — that's what matters at a glance. The
      generic "X tagged you" line becomes a small byline underneath (or, for a
      hand-typed card with no client name yet, it's all there is). */
@@ -82,8 +79,7 @@ function itemHtml(card) {
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
-      (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + esc(body) + '</div>' : '') +
-      (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
+      (body ? '<div class="b">' + esc(body) + '</div>' : '') +
       '<div class="meta">' +
         '<span class="when">' + ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
@@ -94,7 +90,81 @@ function itemHtml(card) {
   );
 }
 
+/* ---------- "Open card" ----------
+   A tile only ever showed a 3-line preview with no way to see the rest —
+   tapping it now opens the full card. Same dense-note formatting as the
+   extension's board: a bold line ending in ":" is a section header, any
+   other bold-only line or a " - " item is a bullet under it, everything
+   else is a plain line. Nothing here can post back to Trello — this phone
+   has no Trello session — so the way to actually reply is the "Trello ↗"
+   link, which opens the real card. */
+
+function formatBodyHtml(text) {
+  if (!text) return '<div class="empty">Nothing else on this card.</div>';
+  let t = esc(text);
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  t = t.replace(/(.)(<b>)/g, '$1\n$2');
+  t = t.replace(/ - (?=\S)/g, '\n- ');
+  const lines = t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean);
+  if (!lines.length) return '<div class="empty">Nothing else on this card.</div>';
+
+  return lines.map((line) => {
+    const bareBold = line.match(/^<b>([^<]*)<\/b>$/);
+    if (bareBold) {
+      return /:\s*$/.test(bareBold[1]) ? '<div class="h">' + line + '</div>' : '<div class="li">' + line + '</div>';
+    }
+    if (line.indexOf('- ') === 0) return '<div class="li">' + line.slice(2) + '</div>';
+    return '<div class="p">' + line + '</div>';
+  }).join('');
+}
+
+function modalHtml(card) {
+  const heading = card.context || card.title;
+  const byline = card.context ? card.title : '';
+  const trelloLink = card.url
+    ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Reply on Trello &#8599;</a>'
+    : '';
+  return (
+    '<div class="modal-head">' +
+      '<button class="modal-close" title="Close">&times;</button>' +
+      '<div class="t">' + esc(heading) + '</div>' +
+      (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
+      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      trelloLink +
+    '</div>' +
+    '<div class="modal-body">' + formatBodyHtml(card.body) + '</div>'
+  );
+}
+
+let modalCardId = null;
+let cardsById = {};
+
+function openModal(id) {
+  const card = cardsById[id];
+  if (!card) return;
+  modalCardId = id;
+  modalBoxEl.innerHTML = modalHtml(card);
+  modalEl.hidden = false;
+}
+
+function closeModal() {
+  modalCardId = null;
+  modalEl.hidden = true;
+  modalBoxEl.innerHTML = '';
+}
+
+modalEl.addEventListener('click', (e) => {
+  if (e.target === modalEl || e.target.classList.contains('modal-close')) closeModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalCardId) closeModal();
+});
+
 function render(cards) {
+  cardsById = {};
+  cards.forEach((c) => { cardsById[c.id] = c; });
+  if (modalCardId && !cardsById[modalCardId]) closeModal();   // card moved/deleted elsewhere
+
   boardEl.innerHTML = COLUMNS.map((col) => {
     const items = cards.filter((c) => c.column === col.id);
     return (
@@ -104,6 +174,8 @@ function render(cards) {
       '</div>'
     );
   }).join('');
+
+  if (modalCardId) modalBoxEl.innerHTML = modalHtml(cardsById[modalCardId]);   // keep it in sync while open
 }
 
 boardEl.addEventListener('change', async (e) => {
@@ -118,22 +190,21 @@ boardEl.addEventListener('change', async (e) => {
 });
 
 boardEl.addEventListener('click', async (e) => {
-  if (e.target.classList.contains('more')) {
+  if (e.target.classList.contains('del')) {
     const id = e.target.closest('.item').dataset.id;
-    const b = e.target.previousElementSibling;
-    const collapsed = b.classList.toggle('clamp');
-    if (collapsed) expanded.delete(id); else expanded.add(id);
-    e.target.textContent = collapsed ? 'Show more' : 'Show less';
+    try {
+      await deleteCard(id);
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not delete: ' + err.message;
+    }
     return;
   }
-  if (!e.target.classList.contains('del')) return;
-  const id = e.target.closest('.item').dataset.id;
-  try {
-    await deleteCard(id);
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not delete: ' + err.message;
-  }
+  /* tapping anywhere else on the tile opens it — same as the extension's
+     board — except the controls that already do their own thing */
+  if (e.target.closest('select, a.open')) return;
+  const item = e.target.closest('.item');
+  if (item) openModal(item.dataset.id);
 });
 
 addBtn.addEventListener('click', async () => {
