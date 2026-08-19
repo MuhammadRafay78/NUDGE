@@ -15,6 +15,15 @@
     .bar2 input[type=text] { flex: 1 1 260px; font: inherit; padding: 8px 10px;
       border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
     .meta { color: var(--muted); font-size: 12px; }
+    .search-wrap { position: relative; flex: 1 1 260px; display: flex; }
+    .search-wrap input { flex: 1; padding-right: 28px; }
+    .search-clear {
+      position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      width: 22px; height: 22px; border: none; background: none; color: var(--muted);
+      font-size: 15px; line-height: 1; cursor: pointer; border-radius: 5px;
+    }
+    .search-clear:hover { color: var(--fg); background: var(--line); }
+    .item mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 0 1px; }
 
     .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: start; }
     @media (max-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
@@ -140,7 +149,10 @@
   <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns to move it.</p>
 
   <div class="bar2">
-    <input type="text" id="cardSearch" placeholder="Search cards…" maxlength="200">
+    <div class="search-wrap">
+      <input type="text" id="cardSearch" placeholder="Search cards… (press / to focus)" maxlength="200">
+      <button class="search-clear" id="cardSearchClear" title="Clear search" hidden>&times;</button>
+    </div>
     <span class="spacer" style="flex:1"></span>
     <input type="text" id="updateRecipient" placeholder="Update for…" maxlength="60" title="Who this daily update is addressed to">
     <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
