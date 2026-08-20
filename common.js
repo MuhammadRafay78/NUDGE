@@ -3275,11 +3275,12 @@ var QA = (function () {
     'You write a short daily work-status message for a tax professional to send to a colleague.',
     'You are given a snapshot of his Kanban board: cards grouped by column —',
     'Inbox (new, not yet started), Doing (actively being worked today), Action Items (needs a decision, a reply, or is blocked on someone else), Done (finished, listed only as a count).',
-    'Each card may show a client/QTM name, a due date, and a short note.',
-    'Write ONE short message — a sentence or two of lead-in, then a plain list of the client/QTM names being worked on today (from Doing, plus anything in Action Items or due today/overdue worth flagging). That list is the point of the message; do not pad it with extra detail per item.',
+    'Each card shows a client/QTM name, sometimes a due date, and sometimes a NOTE — the actual comment or mention text for that card, and the only source of truth for what the task involves.',
+    'Write ONE short message — a sentence or two of lead-in, then a list of the client/QTM names being worked on today (from Doing, plus anything in Action Items or due today/overdue worth flagging).',
+    'For each name in that list, add a short clause (roughly 5-12 words) describing what the task actually is, written from its NOTE — e.g. "Dane Nakama — waiting on K-1s before finishing the projection." Read the NOTE and say what it means in your own words; do not just repeat it verbatim, and do not pad with filler if it is already short. If a card has no NOTE, list just the name with no invented description.',
     'Skip Done and Inbox entirely unless something there is due today or overdue.',
-    'Never invent a client name, QTM code, or due date that is not in the data given. If there is nothing to report, say so plainly in one line.',
-    'No markdown headers, no bullet symbols unless the list has more than about five items. Plain text, the way a person would actually type a quick message.'
+    'Never invent a client name, QTM code, due date, or task detail that is not in the data given. If there is nothing to report, say so plainly in one line.',
+    'No markdown headers. One item per line, dash-prefixed. Plain text, the way a person would actually type a quick message.'
   ].join('\n');
 
   function buildDailyUpdateContext(cards) {
@@ -3296,6 +3297,8 @@ var QA = (function () {
         const bits = [name];
         if (c.due) bits.push(c.due);
         lines.push('- ' + bits.join(' — '));
+        const note = tidyCommentText(c.body || '').trim();
+        if (note) lines.push('  NOTE: ' + note.slice(0, 500));
       });
     });
     return lines.join('\n');
@@ -3332,7 +3335,7 @@ var QA = (function () {
              ("Here is what I am working on today along with" — then nothing).
              thinkingBudget: 0 turns that off; a status update doesn't need
              chain-of-thought. */
-          generationConfig: { temperature: 0.4, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } }
+          generationConfig: { temperature: 0.4, maxOutputTokens: 1400, thinkingConfig: { thinkingBudget: 0 } }
         })
       });
     } catch (e) {
