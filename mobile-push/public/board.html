@@ -34,6 +34,14 @@
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
 
+  .board-tabs { display: flex; gap: 6px; padding: 0 16px 12px; }
+  .board-tab {
+    font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--card);
+    border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; cursor: pointer;
+  }
+  .board-tab.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .board-tab .n { color: inherit; opacity: .75; font-weight: 700; }
+
   .board { display: flex; gap: 12px; overflow-x: auto; padding: 0 16px 8px;
            scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
   .col {
@@ -117,6 +125,8 @@
   <h1>Board</h1>
   <p class="lede">Every tag lands in Inbox. Tap a card to open it; use the dropdown to move it as you work it.</p>
 </header>
+
+<div class="board-tabs" id="boardTabs"></div>
 
 <div class="searchRow">
   <input type="search" id="cardSearch" placeholder="Search cards…" maxlength="200">

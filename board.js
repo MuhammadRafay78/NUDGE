@@ -1,6 +1,7 @@
 /* Kanban board — same server + pairing code as the phone relay (Settings > Mobile notifications). */
 
 const boardEl = document.getElementById('board');
+const boardTabsEl = document.getElementById('boardTabs');
 const statusEl = document.getElementById('status');
 const warnEl = document.getElementById('notConfigured');
 const cardSearch = document.getElementById('cardSearch');
@@ -57,6 +58,29 @@ let replyDraft = null;           // live text of the modal's reply box — the m
                                   // tree from the board, so a board refresh never touches it, but the
                                   // modal's own comment-list reload does rebuild it, hence tracking this
 let attachedImage = null;        // { file, previewUrl } picked for the modal's reply box, or null
+
+/* Main vs QTM & Master Data — two boards sharing the same four columns.
+   A card filed before this shipped has no .board at all, which is treated
+   as Main so nothing already on the board silently vanishes from view. */
+function cardBoard(c) { return c.board || 'main'; }
+let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
+if (!QA.BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
+
+function renderBoardTabs(cards) {
+  boardTabsEl.innerHTML = QA.BOARDS.map((b) => {
+    const n = cards.filter((c) => cardBoard(c) === b.id).length;
+    return '<button class="board-tab' + (b.id === activeBoard ? ' on' : '') + '" data-board="' + b.id + '">' +
+      esc(b.label) + ' <span class="n">' + n + '</span></button>';
+  }).join('');
+}
+
+boardTabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.board-tab');
+  if (!btn || btn.dataset.board === activeBoard) return;
+  activeBoard = btn.dataset.board;
+  localStorage.setItem('nudgeActiveBoard', activeBoard);
+  render(lastCards);
+});
 
 function clearAttachedImage() {
   if (attachedImage) URL.revokeObjectURL(attachedImage.previewUrl);
@@ -145,6 +169,9 @@ function itemHtml(card, terms) {
   const moveOptions = QA.BOARD_COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
+  const boardOptions = QA.BOARDS.map((b) =>
+    '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
+  ).join('');
   return (
     /* Dragging still works, but it needs a steady hand and a column that's
        actually on screen — this dropdown moves a card in one click/tap
@@ -173,6 +200,7 @@ function itemHtml(card, terms) {
       ) : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
+        '<select class="move-board" title="Board…">' + boardOptions + '</select>' +
         '<select class="move" title="Move to…">' + moveOptions + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
@@ -337,12 +365,15 @@ function render(cards) {
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card deleted elsewhere
 
+  renderBoardTabs(cards);
+  const onBoard = cards.filter((c) => cardBoard(c) === activeBoard);
+
   const terms = searchTerms(searchQuery);
-  const visible = terms.length ? cards.filter((c) => matchesSearch(c, terms)) : cards;
+  const visible = terms.length ? onBoard.filter((c) => matchesSearch(c, terms)) : onBoard;
   cardSearchClear.hidden = !searchQuery;
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
-    const total = cards.filter((c) => c.column === col.id);
+    const total = onBoard.filter((c) => c.column === col.id);
     const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
@@ -514,13 +545,24 @@ boardEl.addEventListener('click', async (e) => {
 });
 
 boardEl.addEventListener('change', async (e) => {
-  if (!e.target.classList.contains('move')) return;
-  const id = e.target.closest('.item').dataset.id;
-  try {
-    await QA.moveCard(id, e.target.value);
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not move: ' + err.message;
+  if (e.target.classList.contains('move')) {
+    const id = e.target.closest('.item').dataset.id;
+    try {
+      await QA.moveCard(id, e.target.value);
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not move: ' + err.message;
+    }
+    return;
+  }
+  if (e.target.classList.contains('move-board')) {
+    const id = e.target.closest('.item').dataset.id;
+    try {
+      await QA.updateCard(id, { board: e.target.value });
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not move: ' + err.message;
+    }
   }
 });
 

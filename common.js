@@ -3091,6 +3091,58 @@ var QA = (function () {
     { id: 'done', label: 'Done' }
   ];
 
+  /* Two boards sharing the same four columns above — a card lives on one or
+     the other, not both. "Main" is everything else: one-off client asks,
+     replies, deliveries. "QTM & Master Data" is quarterly-tax-meeting
+     prep/follow-up and keeping a client's master data current. */
+  const BOARDS = [
+    { id: 'main', label: 'Main' },
+    { id: 'qtm', label: 'QTM & Master Data' }
+  ];
+
+  const BOARD_CLASSIFY_SYSTEM = [
+    'You sort a freshly-tagged Trello card onto one of two boards for a tax professional.',
+    'MAIN: a specific, one-off client ask — a reply needed, a decision, a delivery to make, a document to review, anything that reads as an individual action item for a particular client.',
+    'QTM: quarterly-tax-meeting prep or follow-up, and master-data upkeep — a pending-items checklist from a QTM/quarterly review, transcript or Account/Wage-and-Income data entry, master-data reconciliation, or election-status tracking tied to a recurring review cycle.',
+    'You are given the card\'s name (often prefixed with a code like QTM2 or TPR — that prefix alone does not decide the board; read what the NOTE actually says the task is) and its NOTE, the real comment text.',
+    'Answer with exactly one word: main or qtm. Nothing else — no punctuation, no explanation.'
+  ].join('\n');
+
+  /* Runs once per freshly-filed card (auto-tagged or the popup's "+ Board"),
+     inside fileCard below — reuses the same key/model as "Sort mentions"
+     rather than asking for a third. Off/no key/any trouble at all just
+     falls back to Main; a wrong guess here is a one-click Move away, and a
+     failed classification must never cost him the card. */
+  async function classifyCardBoard(fields) {
+    const cfg = await getTriage();
+    if (!cfg.enabled || !cfg.apiKey) return { ok: false, board: 'main' };
+    const name = fields.context || fields.title || '';
+    const note = tidyCommentText(fields.body || '').slice(0, 800);
+    if (!name && !note) return { ok: false, board: 'main' };
+    try {
+      const res = await fetchGeminiRetry(
+        'https://generativelanguage.googleapis.com/v1beta/models/' +
+        encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: BOARD_CLASSIFY_SYSTEM }] },
+            contents: [{ role: 'user', parts: [{ text: 'CARD NAME: ' + name + '\nNOTE: ' + (note || '(none)') }] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 10, thinkingConfig: { thinkingBudget: 0 } }
+          })
+        }
+      );
+      if (!res.ok) return { ok: false, board: 'main' };
+      const body = await res.json();
+      const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
+      const said = parts.map(function (p) { return p.text || ''; }).join('').trim().toLowerCase();
+      return { ok: true, board: said.indexOf('qtm') === 0 ? 'qtm' : 'main' };
+    } catch (e) {
+      return { ok: false, board: 'main' };
+    }
+  }
+
   async function boardBase() {
     const cfg = await getPush();
     if (!cfg.serverUrl || !cfg.code) return null;
@@ -3127,7 +3179,7 @@ var QA = (function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code: cx.code, title: f.title, body: f.body || '', url: f.url || '',
-        column: f.column || 'inbox', context: f.context || '', due: f.due || '',
+        column: f.column || 'inbox', board: f.board || 'main', context: f.context || '', due: f.due || '',
         cardId: f.cardId || '', actorUser: f.actorUser || ''
       })
     });
@@ -3135,10 +3187,18 @@ var QA = (function () {
   }
 
   /* Fire-and-forget board logging: a missing/misconfigured server should
-     never block the caller or throw, same spirit as pushToPhone. */
+     never block the caller or throw, same spirit as pushToPhone. Decides
+     Main vs QTM & Master Data itself (unless the caller already knows —
+     the board's own "Move" dropdown always passes one), so neither the
+     background poll nor the popup's "+ Board" button has to remember to. */
   async function fileCard(fields) {
     try {
-      await createCard(Object.assign({ column: 'inbox' }, fields));
+      const f = Object.assign({ column: 'inbox' }, fields);
+      if (!f.board) {
+        const classified = await classifyCardBoard(f);
+        f.board = classified.board;
+      }
+      await createCard(f);
       return { ok: true };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
@@ -3326,7 +3386,7 @@ var QA = (function () {
     'Inbox (new, not yet started), Doing (actively being worked today), Action Items (needs a decision, a reply, or is blocked on someone else), Done (finished, listed only as a count).',
     'Each card shows a client/QTM name, sometimes a due date, and sometimes a NOTE — the actual comment or mention text for that card, and the only source of truth for what the task involves.',
     'Write ONE short message — a sentence or two of lead-in, then a list of the client/QTM names being worked on today (from Doing, plus anything in Action Items or due today/overdue worth flagging).',
-    'For each name in that list, add a short clause (roughly 5-12 words) describing what the task actually is, written from its NOTE — e.g. "Dane Nakama — waiting on K-1s before finishing the projection." Read the NOTE and say what it means in your own words; do not just repeat it verbatim, and do not pad with filler if it is already short. If a card has no NOTE, list just the name with no invented description.',
+    'For each name in that list, if the card has a DUE value, show it in parentheses right after the name, copied exactly as given (do not reword or re-case it) — then a short clause (roughly 5-12 words) describing what the task actually is, written from its NOTE. Full shape: "Dane Nakama (Due tomorrow) — waiting on K-1s before finishing the projection." Read the NOTE and say what it means in your own words; do not just repeat it verbatim, and do not pad with filler if it is already short. Skip the parentheses entirely for a card with no DUE — never invent one. If a card has no NOTE, list just the name (and its DUE, if any) with no invented description.',
     'Skip Done and Inbox entirely unless something there is due today or overdue.',
     'Never invent a client name, QTM code, due date, or task detail that is not in the data given. If there is nothing to report, say so plainly in one line.',
     'No markdown headers. One item per line, dash-prefixed. Plain text, the way a person would actually type a quick message.'
@@ -3342,10 +3402,8 @@ var QA = (function () {
       }
       lines.push(col.label.toUpperCase() + (items.length ? ':' : ': (nothing here)'));
       items.forEach(function (c) {
-        const name = c.context || c.title;
-        const bits = [name];
-        if (c.due) bits.push(c.due);
-        lines.push('- ' + bits.join(' — '));
+        lines.push('- ' + (c.context || c.title));
+        if (c.due) lines.push('  DUE: ' + c.due);
         const note = tidyCommentText(c.body || '').trim();
         if (note) lines.push('  NOTE: ' + note.slice(0, 500));
       });
@@ -4465,7 +4523,7 @@ var QA = (function () {
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
-    BOARD_COLUMNS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
+    BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,
