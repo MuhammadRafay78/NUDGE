@@ -5,20 +5,23 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
-/* Four boards sharing the same four columns above — Main for one-off
-   client asks, QTM for quarterly-tax-meeting prep/follow-up, Master Data
-   for the separate, ongoing job of keeping a client's data file current,
-   Tax Plan Draft for anything mentioning a discovery call prep note. A
-   freshly-tagged card picks one automatically (see the extension's
-   classifyCardBoard/keywordBoardOverride); this is just which one is on
-   screen right now. */
+/* Three boards sharing the same four columns above — Main for one-off
+   client asks, QTM for quarterly-tax-meeting prep/follow-up (including its
+   own data upkeep), Tax Plan Draft for anything mentioning a discovery
+   call prep note. A freshly-tagged card picks one automatically (see the
+   extension's classifyCardBoard/keywordBoardOverride); this is just which
+   one is on screen right now. */
 const BOARDS = [
   { id: 'main', label: 'Main' },
   { id: 'qtm', label: 'QTM' },
-  { id: 'masterdata', label: 'Master Data' },
   { id: 'taxplan', label: 'Tax Plan Draft' }
 ];
-function cardBoard(c) { return c.board || 'main'; }   // pre-existing cards have no .board at all
+/* A card with no .board (filed before boards existed) or one that names a
+   board that's since been retired (e.g. the old "masterdata") falls back
+   to Main instead of vanishing from every tab. */
+function cardBoard(c) {
+  return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
+}
 
 const code = localStorage.getItem('nudgeCode');
 const boardEl = document.getElementById('board');
