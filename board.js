@@ -59,7 +59,7 @@ let replyDraft = null;           // live text of the modal's reply box — the m
                                   // modal's own comment-list reload does rebuild it, hence tracking this
 let attachedImage = null;        // { file, previewUrl } picked for the modal's reply box, or null
 
-/* Main vs QTM & Master Data — two boards sharing the same four columns.
+/* Main vs QTM vs Master Data — three boards sharing the same four columns.
    A card filed before this shipped has no .board at all, which is treated
    as Main so nothing already on the board silently vanishes from view. */
 function cardBoard(c) { return c.board || 'main'; }

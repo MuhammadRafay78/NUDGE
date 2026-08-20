@@ -5,13 +5,15 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
-/* Two boards sharing the same four columns above — Main for one-off client
-   asks, QTM & Master Data for quarterly-tax-meeting prep/follow-up. A
+/* Three boards sharing the same four columns above — Main for one-off
+   client asks, QTM for quarterly-tax-meeting prep/follow-up, Master Data
+   for the separate, ongoing job of keeping a client's data file current. A
    freshly-tagged card picks one automatically (see the extension's
    classifyCardBoard); this is just which one is on screen right now. */
 const BOARDS = [
   { id: 'main', label: 'Main' },
-  { id: 'qtm', label: 'QTM & Master Data' }
+  { id: 'qtm', label: 'QTM' },
+  { id: 'masterdata', label: 'Master Data' }
 ];
 function cardBoard(c) { return c.board || 'main'; }   // pre-existing cards have no .board at all
 
