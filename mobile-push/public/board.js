@@ -5,15 +5,18 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
-/* Three boards sharing the same four columns above — Main for one-off
+/* Four boards sharing the same four columns above — Main for one-off
    client asks, QTM for quarterly-tax-meeting prep/follow-up, Master Data
-   for the separate, ongoing job of keeping a client's data file current. A
+   for the separate, ongoing job of keeping a client's data file current,
+   Tax Plan Draft for anything mentioning a discovery call prep note. A
    freshly-tagged card picks one automatically (see the extension's
-   classifyCardBoard); this is just which one is on screen right now. */
+   classifyCardBoard/keywordBoardOverride); this is just which one is on
+   screen right now. */
 const BOARDS = [
   { id: 'main', label: 'Main' },
   { id: 'qtm', label: 'QTM' },
-  { id: 'masterdata', label: 'Master Data' }
+  { id: 'masterdata', label: 'Master Data' },
+  { id: 'taxplan', label: 'Tax Plan Draft' }
 ];
 function cardBoard(c) { return c.board || 'main'; }   // pre-existing cards have no .board at all
 
@@ -98,11 +101,17 @@ function itemHtml(card) {
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
       (body ? '<div class="b">' + esc(body) + '</div>' : '') +
+      /* Two selects plus the timestamp/Trello-link/delete button couldn't
+         fit on one row on a phone-width tile without crushing "when" down
+         to a sliver of wrapped characters — give the selects their own
+         row instead. */
+      '<div class="moves">' +
+        '<select class="move-board" title="Board…">' + boardOptions + '</select>' +
+        '<select class="move">' + options + '</select>' +
+      '</div>' +
       '<div class="meta">' +
         '<span class="when">' + ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
-        '<select class="move-board" title="Board…">' + boardOptions + '</select>' +
-        '<select class="move">' + options + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'

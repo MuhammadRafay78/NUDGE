@@ -198,10 +198,15 @@ function itemHtml(card, terms) {
           trelloLink +
         '</div>'
       ) : '') +
-      '<div class="row2">' +
-        '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
+      /* Two selects plus a timestamp and delete button couldn't fit on one
+         row without squeezing "when" down to a vertical sliver of wrapped
+         characters — give the selects their own row instead. */
+      '<div class="moves">' +
         '<select class="move-board" title="Board…">' + boardOptions + '</select>' +
         '<select class="move" title="Move to…">' + moveOptions + '</select>' +
+      '</div>' +
+      '<div class="row2">' +
+        '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'
