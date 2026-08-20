@@ -142,12 +142,17 @@ function itemHtml(card, terms) {
      the heading). */
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
+  const moveOptions = QA.BOARD_COLUMNS.map((c) =>
+    '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
+  ).join('');
   return (
-    /* draggable="true" is the only way to move a card between columns now —
-       the handle is just a visual cue for that, grabbing anywhere else on
-       the card (that isn't itself a button/link) works exactly the same.
-       Clicking anywhere on the card that isn't a control opens it — same as
-       clicking "Open card" — see the boardEl click handler below. */
+    /* Dragging still works, but it needs a steady hand and a column that's
+       actually on screen — this dropdown moves a card in one click/tap
+       regardless. The handle is just a visual cue for dragging; grabbing
+       anywhere else on the card that isn't itself a button/link/select
+       works exactly the same. Clicking anywhere on the card that isn't a
+       control opens it — same as clicking "Open card" — see the boardEl
+       click handler below. */
     '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
       '<div class="t" title="' + esc(heading) + '">' + hi(heading, terms) + '</div>' +
@@ -168,6 +173,7 @@ function itemHtml(card, terms) {
       ) : '') +
       '<div class="row2">' +
         '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
+        '<select class="move" title="Move to…">' + moveOptions + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'
@@ -499,11 +505,23 @@ boardEl.addEventListener('click', async (e) => {
 
   /* Clicking the card itself — its title, context, due chip, body text, the
      drag handle, blank padding — opens it, same as the "Open card" button. */
+  if (e.target.closest('select')) return;   // opening/choosing from the move dropdown, not the card
   const item = e.target.closest('.item');
   const card = item && cardsById[item.dataset.id];
   if (!card || !card.cardId) return;
   if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
   openModal(item.dataset.id, false);
+});
+
+boardEl.addEventListener('change', async (e) => {
+  if (!e.target.classList.contains('move')) return;
+  const id = e.target.closest('.item').dataset.id;
+  try {
+    await QA.moveCard(id, e.target.value);
+    load();
+  } catch (err) {
+    statusEl.textContent = 'Could not move: ' + err.message;
+  }
 });
 
 /* ---------- the "Open card" modal itself ---------- */
