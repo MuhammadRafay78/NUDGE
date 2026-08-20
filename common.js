@@ -2288,7 +2288,12 @@ var QA = (function () {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: GMAIL_QA_SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: 'CONTEXT:\n' + context + '\n\nQUESTION: ' + question }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 350 }
+          /* Flash's default "thinking" tokens count against maxOutputTokens —
+             with a small cap, the model could spend the whole budget
+             reasoning and get cut off before writing any answer at all.
+             thinkingBudget: 0 turns that off; this is direct extraction, not
+             a task that benefits from chain-of-thought. */
+          generationConfig: { temperature: 0.2, maxOutputTokens: 700, thinkingConfig: { thinkingBudget: 0 } }
         })
       });
     } catch (e) {
@@ -2303,8 +2308,12 @@ var QA = (function () {
       throw new Error(triageError(res.status, detail));
     }
     const body = await res.json();
-    const parts = (((body.candidates || [])[0] || {}).content || {}).parts;
+    const candidate = (body.candidates || [])[0] || {};
+    const parts = (candidate.content || {}).parts;
     const text = (parts || []).map(function (p) { return p.text || ''; }).join('\n').trim();
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      throw new Error('Gemini\'s answer got cut off before it finished — try asking again.');
+    }
     return { text: text || '(empty answer)' };
   }
 
@@ -2677,7 +2686,7 @@ var QA = (function () {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: TRIAGE_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: numbered }] }],
-          generationConfig: { temperature: 0, maxOutputTokens: 800 }
+          generationConfig: { temperature: 0, maxOutputTokens: 1200, thinkingConfig: { thinkingBudget: 0 } }
         })
       });
       if (!res.ok) {
@@ -2948,7 +2957,7 @@ var QA = (function () {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: LEDGER_PROMPT }] },
             contents: [{ role: 'user', parts: [{ text: numbered }] }],
-            generationConfig: { temperature: 0, maxOutputTokens: 1200 }
+            generationConfig: { temperature: 0, maxOutputTokens: 2000, thinkingConfig: { thinkingBudget: 0 } }
           })
         }
       );
@@ -3317,7 +3326,13 @@ var QA = (function () {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: DAILY_UPDATE_SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: ask + '\n\nBOARD SNAPSHOT:\n' + context }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 400 }
+          /* Flash's default "thinking" tokens count against maxOutputTokens —
+             at 400 the model could burn the whole budget reasoning and never
+             get around to writing the update, so it came back half-written
+             ("Here is what I am working on today along with" — then nothing).
+             thinkingBudget: 0 turns that off; a status update doesn't need
+             chain-of-thought. */
+          generationConfig: { temperature: 0.4, maxOutputTokens: 800, thinkingConfig: { thinkingBudget: 0 } }
         })
       });
     } catch (e) {
@@ -3332,8 +3347,12 @@ var QA = (function () {
       throw new Error(triageError(res.status, detail));
     }
     const body = await res.json();
-    const parts = (((body.candidates || [])[0] || {}).content || {}).parts;
+    const candidate = (body.candidates || [])[0] || {};
+    const parts = (candidate.content || {}).parts;
     const text = (parts || []).map(function (p) { return p.text || ''; }).join('\n').trim();
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      throw new Error('Gemini\'s draft got cut off before it finished — hit Regenerate to try again.');
+    }
     return { text: text || '(empty answer)', model: cfg.model };
   }
 
