@@ -2282,7 +2282,7 @@ var QA = (function () {
 
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetchGeminiRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
         body: JSON.stringify({
@@ -2671,7 +2671,7 @@ var QA = (function () {
       encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent';
 
     try {
-      const res = await fetch(url, {
+      const res = await fetchGeminiRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
         body: JSON.stringify({
@@ -2709,6 +2709,32 @@ var QA = (function () {
     if (status === 429) return 'Gemini is rate-limiting — it will try again later.';
     if (status >= 500) return 'Google had a problem (' + status + ').';
     return 'Gemini said no (' + status + ')' + (detail ? ': ' + detail.slice(0, 120) : '');
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* Gemini's 429 (rate-limited) and 5xx (its servers, not ours) are usually
+     gone a couple seconds later — a bare fetch surfaced them as a hard
+     failure on the first try, so every "AI regenerate" hiccup landed on the
+     user instead of just... working on the next attempt. Retry those with
+     backoff before giving up; anything else (bad key, bad model) fails fast
+     since trying again cannot fix it. */
+  async function fetchGeminiRetry(url, options) {
+    const maxAttempts = 3;
+    const baseDelayMs = 800;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      let res;
+      try {
+        res = await fetch(url, options);
+      } catch (e) {
+        if (attempt === maxAttempts) throw e;
+        await sleep(baseDelayMs * Math.pow(2, attempt - 1));
+        continue;
+      }
+      if (res.ok || attempt === maxAttempts) return res;
+      if (res.status !== 429 && res.status < 500) return res;
+      await sleep(baseDelayMs * Math.pow(2, attempt - 1));
+    }
   }
 
   /* ================= email, from the last meeting onwards =================
@@ -2913,7 +2939,7 @@ var QA = (function () {
     }).join('\n');
 
     try {
-      const res = await fetch(
+      const res = await fetchGeminiRetry(
         'https://generativelanguage.googleapis.com/v1beta/models/' +
         encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent',
         {
@@ -3285,7 +3311,7 @@ var QA = (function () {
 
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetchGeminiRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
         body: JSON.stringify({
