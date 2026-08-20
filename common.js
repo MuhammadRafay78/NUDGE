@@ -3091,16 +3091,36 @@ var QA = (function () {
     { id: 'done', label: 'Done' }
   ];
 
-  /* Three boards sharing the same four columns above — a card lives on
+  /* Four boards sharing the same four columns above — a card lives on
      exactly one. "Main" is everything else: one-off client asks, replies,
      deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself.
      "Master Data" is the separate, ongoing job of keeping a client's
-     underlying data file current — not tied to any one meeting. */
+     underlying data file current — not tied to any one meeting. "Tax Plan
+     Draft" is a fixed rule, not an AI guess — see keywordBoardOverride. */
   const BOARDS = [
     { id: 'main', label: 'Main' },
     { id: 'qtm', label: 'QTM' },
-    { id: 'masterdata', label: 'Master Data' }
+    { id: 'masterdata', label: 'Master Data' },
+    { id: 'taxplan', label: 'Tax Plan Draft' }
   ];
+
+  /* A couple of routing calls are exact rules, not judgment calls — cheaper
+     and more reliable than asking Gemini, and they run before it so a
+     match here skips the AI board classifier below entirely.
+     - Any card whose text mentions a discovery call prep note goes straight
+       to Tax Plan Draft.
+     - On the QTM board specifically, a card whose text is itself an action-
+       /pending-items list files directly into the Action Items column
+       instead of Inbox; anything else on QTM stays in the default column. */
+  function keywordBoardOverride(fields) {
+    const hay = [fields.context, fields.title, fields.body].filter(Boolean).join(' ').toLowerCase();
+    if (/discovery call prep notes?/.test(hay)) return 'taxplan';
+    return null;
+  }
+
+  function qtmIsActionItems(fields) {
+    return /\b(action items?|pending items?)\b/i.test(fields.body || '');
+  }
 
   const BOARD_CLASSIFY_SYSTEM = [
     'You sort a freshly-tagged Trello card onto one of three boards for a tax professional.',
@@ -3192,16 +3212,18 @@ var QA = (function () {
 
   /* Fire-and-forget board logging: a missing/misconfigured server should
      never block the caller or throw, same spirit as pushToPhone. Decides
-     Main vs QTM & Master Data itself (unless the caller already knows —
-     the board's own "Move" dropdown always passes one), so neither the
-     background poll nor the popup's "+ Board" button has to remember to. */
+     the board itself (unless the caller already knows — the board's own
+     "Board" dropdown always passes one), so neither the background poll
+     nor the popup's "+ Board" button has to remember to. A card that lands
+     on QTM and is itself an action-/pending-items list also skips Inbox
+     and files straight into Action Items. */
   async function fileCard(fields) {
     try {
       const f = Object.assign({ column: 'inbox' }, fields);
       if (!f.board) {
-        const classified = await classifyCardBoard(f);
-        f.board = classified.board;
+        f.board = keywordBoardOverride(f) || (await classifyCardBoard(f)).board;
       }
+      if (f.board === 'qtm' && qtmIsActionItems(f)) f.column = 'action';
       await createCard(f);
       return { ok: true };
     } catch (e) {
