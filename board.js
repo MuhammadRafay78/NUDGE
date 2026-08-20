@@ -305,7 +305,7 @@ async function loadHistory(id, focusComposer) {
   } else {
     historyCache[id] = {
       ok: false,
-      error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Needs an open Trello tab — open trello.com in another tab, then try again.')
+      error: (res && res.error) || (res && res.status ? 'Trello said no (' + res.status + ').' : 'Could not reach Trello — check you are logged into Trello in this browser.')
     };
   }
   if (modalCardId === id) renderModal(focusComposer);
@@ -767,7 +767,7 @@ backfillBtn.addEventListener('click', async () => {
     backfillBtn.textContent = 'Backfilling ' + (done + failed + 1) + ' of ' + targets.length + '…';
     const shortLink = shortLinkFromUrl(card.url);
     try {
-      const got = await QA.cardDetailsFor(shortLink);
+      const got = await QA.cardDetailsFor(shortLink, true);   // explicit click — worth opening a tab for
       if (!got || !got.ok) { failed++; continue; }
       const lab = got.due ? QA.dueLabel(got.due, got.dueComplete) : null;
       await QA.updateCard(card.id, {

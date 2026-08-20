@@ -1083,13 +1083,13 @@ var QA = (function () {
       ? item.hash.slice(3)
       : (item && item.notificationId) || '';
     if (!id) return { ok: false, error: 'not a Trello notification' };
-    return inTrelloTab(setNotificationRead, [id, !undo]);
+    return inTrelloTab(setNotificationRead, [id, !undo], true);   // he just clicked "done" — worth opening a tab for
   }
 
   function handledErrorMessage(res) {
     if (!res) return 'Nothing came back from Trello.';
-    if (res.error === 'no Trello tab is open') {
-      return 'Marked done here, but Trello could not be told — open a Trello tab and it will catch up.';
+    if (res.error && res.error.indexOf('could not open a Trello tab') === 0) {
+      return 'Marked done here, but Trello could not be told — make sure you are logged into Trello in this browser and it will catch up.';
     }
     if (res.error) return res.error;
     if (res.status === 401 || res.status === 403) return 'Trello would not accept it — reload your Trello tab.';
@@ -1276,13 +1276,13 @@ var QA = (function () {
     })();
   }
 
-  /* send a reply from the panel, optionally with one image; needs an open Trello tab */
+  /* send a reply from the panel, optionally with one image; opens a Trello tab
+     in the background first if he doesn't already have one */
   async function replyToCard(cardId, text, file) {
     const body = normalize(text);
     if (!body && !file) return { ok: false, error: 'empty' };
-    const tabs = await chrome.tabs.query({ url: ['*://trello.com/*', '*://*.trello.com/*'] });
-    const tab = (tabs || []).filter((t) => t.id)[0];
-    if (!tab) return { ok: false, error: 'no Trello tab is open, so there is nothing to post through' };
+    const tab = await ensureTrelloTab(true);
+    if (!tab) return { ok: false, error: 'could not open a Trello tab — check you are logged into Trello in this browser' };
 
     let finalBody = body;
     if (file) {
@@ -1394,12 +1394,60 @@ var QA = (function () {
     })();
   }
 
+  /* Every reply/reaction/lookup runs a content script inside a real Trello
+     tab, riding his own session instead of a separate API key — but that
+     meant the whole thing quietly did nothing if he simply didn't have
+     trello.com open anywhere. Rather than surface that as a dead end, open
+     one in the background and wait for it to finish loading before handing
+     it back; it's reused by every call after this one, same as a tab he
+     opened himself. */
+  function waitForTabLoad(tabId) {
+    return new Promise(function (resolve) {
+      let done = false;
+      const finish = function () {
+        if (done) return;
+        done = true;
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      };
+      const listener = function (id, info) {
+        if (id === tabId && info.status === 'complete') finish();
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      chrome.tabs.get(tabId, function (t) { if (t && t.status === 'complete') finish(); });
+      setTimeout(finish, 8000);   // Trello can hang; don't block a reply on it forever
+    });
+  }
+
+  /* autoOpen is opt-in: an explicit reply/react/open-card is worth a
+     background tab to unblock, but the passive stuff that runs on its own
+     (filing a freshly-tagged card, lazily backfilling a due date while a
+     list scrolls by) should keep degrading quietly the way it always has,
+     not start popping tabs open on a timer nobody asked for. */
+  async function ensureTrelloTab(autoOpen) {
+    const tabs = await chrome.tabs.query({ url: ['*://trello.com/*', '*://*.trello.com/*'] });
+    const existing = (tabs || []).filter(function (t) { return t.id; })[0];
+    if (existing || !autoOpen) return existing || null;
+    let tab;
+    try {
+      tab = await chrome.tabs.create({ url: 'https://trello.com/', active: false });
+    } catch (e) {
+      return null;
+    }
+    if (!tab || !tab.id) return null;
+    await waitForTabLoad(tab.id);
+    return tab;
+  }
+
   /* Run a reader inside whatever Trello tab is open, so his session applies.
      reactToMention grew its own copy of this; this is the shared one. */
-  async function inTrelloTab(func, args) {
-    const tabs = await chrome.tabs.query({ url: ['*://trello.com/*', '*://*.trello.com/*'] });
-    const tab = (tabs || []).filter(function (t) { return t.id; })[0];
-    if (!tab) return { ok: false, error: 'no Trello tab is open' };
+  async function inTrelloTab(func, args, autoOpen) {
+    const tab = await ensureTrelloTab(autoOpen);
+    if (!tab) {
+      return { ok: false, error: autoOpen
+        ? 'could not open a Trello tab — check you are logged into Trello in this browser'
+        : 'no Trello tab is open' };
+    }
     try {
       const got = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN', func: func, args: args || []
@@ -1419,10 +1467,12 @@ var QA = (function () {
   /* Name + due date together, for filing a board card with the real thing
      rather than whatever the notification payload happened to include.
      Same "needs an open Trello tab" constraint as dueForCard — no direct-
-     fetch fallback, since that path is reserved for reading notifications. */
-  async function cardDetailsFor(cardId) {
+     fetch fallback, since that path is reserved for reading notifications.
+     autoOpen defaults off (fileTagCard calls this unattended, on every fresh
+     tag) — the Backfill button, an explicit one-off action, opts in. */
+  async function cardDetailsFor(cardId, autoOpen) {
     if (!cardId) return { ok: false, error: 'no card' };
-    return inTrelloTab(fetchCardDetails, [cardId]);
+    return inTrelloTab(fetchCardDetails, [cardId], !!autoOpen);
   }
 
   /* The whole card in one request — description, due, checklist progress and the
@@ -1473,7 +1523,7 @@ var QA = (function () {
 
   async function cardWholeFor(cardId) {
     if (!cardId) return { ok: false, error: 'no card' };
-    return inTrelloTab(fetchCardWhole, [cardId]);
+    return inTrelloTab(fetchCardWhole, [cardId], true);   // opening a card is a deliberate click
   }
 
   async function reactToMention(item, reaction) {
@@ -1483,9 +1533,8 @@ var QA = (function () {
     if (!r) return { ok: false, error: 'unknown reaction' };
     if (!item || !item.cardId) return { ok: false, error: 'this mention has no card to react on' };
 
-    const tabs = await chrome.tabs.query({ url: ['*://trello.com/*', '*://*.trello.com/*'] });
-    const tab = (tabs || []).filter(function (t) { return t.id; })[0];
-    if (!tab) return { ok: false, error: 'no Trello tab is open, so there is nothing to react through' };
+    const tab = await ensureTrelloTab(true);
+    if (!tab) return { ok: false, error: 'could not open a Trello tab — check you are logged into Trello in this browser' };
 
     const run = async function (func, args) {
       const got = await chrome.scripting.executeScript({
