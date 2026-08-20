@@ -5,6 +5,7 @@ const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
+const BOARDS = ['main', 'qtm'];
 const boardKey = (code) => 'board:' + code;
 
 function newCode() {
@@ -53,6 +54,7 @@ async function addCard(env, code, patch) {
     cardId: (patch.cardId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
+    board: BOARDS.includes(patch.board) ? patch.board : 'main',
     createdAt: now,
     updatedAt: now
   };
@@ -151,6 +153,9 @@ export default {
       if (payload.column !== undefined && !COLUMNS.includes(payload.column)) {
         return json({ ok: false, error: 'Invalid column.' }, 400);
       }
+      if (payload.board !== undefined && !BOARDS.includes(payload.board)) {
+        return json({ ok: false, error: 'Invalid board.' }, 400);
+      }
 
       const cards = await loadBoard(env, code);
       const card = cards.find((c) => c.id === cardMatch[1]);
@@ -160,6 +165,7 @@ export default {
          pass sends {context, due, cardId} without column, a drag/drop sends
          {column} alone */
       if (payload.column !== undefined) card.column = payload.column;
+      if (payload.board !== undefined) card.board = payload.board;
       if (payload.context !== undefined) card.context = String(payload.context).slice(0, 200);
       if (payload.due !== undefined) card.due = String(payload.due).slice(0, 40);
       if (payload.cardId !== undefined) card.cardId = String(payload.cardId).slice(0, 60);

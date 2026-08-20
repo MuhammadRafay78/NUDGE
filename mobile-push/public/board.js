@@ -5,12 +5,26 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
+/* Two boards sharing the same four columns above — Main for one-off client
+   asks, QTM & Master Data for quarterly-tax-meeting prep/follow-up. A
+   freshly-tagged card picks one automatically (see the extension's
+   classifyCardBoard); this is just which one is on screen right now. */
+const BOARDS = [
+  { id: 'main', label: 'Main' },
+  { id: 'qtm', label: 'QTM & Master Data' }
+];
+function cardBoard(c) { return c.board || 'main'; }   // pre-existing cards have no .board at all
+
 const code = localStorage.getItem('nudgeCode');
 const boardEl = document.getElementById('board');
+const boardTabsEl = document.getElementById('boardTabs');
 const statusEl = document.getElementById('status');
 const cardSearch = document.getElementById('cardSearch');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
+
+let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
+if (!BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 
 function ago(ms) {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
@@ -46,6 +60,14 @@ async function moveCard(id, column) {
   });
 }
 
+async function moveCardBoard(id, board) {
+  await api('/api/cards/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: code, board: board })
+  });
+}
+
 async function deleteCard(id) {
   await api('/api/cards/' + encodeURIComponent(id), {
     method: 'DELETE',
@@ -58,6 +80,9 @@ function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
+  ).join('');
+  const boardOptions = BOARDS.map((b) =>
+    '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
   ).join('');
   const body = card.body || '';
   /* Lead with the client/card name — that's what matters at a glance. The
@@ -74,6 +99,7 @@ function itemHtml(card) {
       '<div class="meta">' +
         '<span class="when">' + ago(card.updatedAt || card.createdAt) + '</span>' +
         openLink +
+        '<select class="move-board" title="Board…">' + boardOptions + '</select>' +
         '<select class="move">' + options + '</select>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
@@ -166,17 +192,36 @@ function matchesSearch(card, terms) {
   return terms.every((t) => hay.indexOf(t) > -1);
 }
 
+function renderBoardTabs(cards) {
+  boardTabsEl.innerHTML = BOARDS.map((b) => {
+    const n = cards.filter((c) => cardBoard(c) === b.id).length;
+    return '<button class="board-tab' + (b.id === activeBoard ? ' on' : '') + '" data-board="' + b.id + '">' +
+      esc(b.label) + ' <span class="n">' + n + '</span></button>';
+  }).join('');
+}
+
+boardTabsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.board-tab');
+  if (!btn || btn.dataset.board === activeBoard) return;
+  activeBoard = btn.dataset.board;
+  localStorage.setItem('nudgeActiveBoard', activeBoard);
+  render(lastCards);
+});
+
 function render(cards) {
   lastCards = cards;
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card moved/deleted elsewhere
 
+  renderBoardTabs(cards);
+  const onBoard = cards.filter((c) => cardBoard(c) === activeBoard);
+
   const terms = searchTerms(searchQuery);
-  const visible = terms.length ? cards.filter((c) => matchesSearch(c, terms)) : cards;
+  const visible = terms.length ? onBoard.filter((c) => matchesSearch(c, terms)) : onBoard;
 
   boardEl.innerHTML = COLUMNS.map((col) => {
-    const total = cards.filter((c) => c.column === col.id);
+    const total = onBoard.filter((c) => c.column === col.id);
     const items = visible.filter((c) => c.column === col.id);
     return (
       '<div class="col" data-col="' + col.id + '">' +
@@ -191,13 +236,24 @@ function render(cards) {
 }
 
 boardEl.addEventListener('change', async (e) => {
-  if (!e.target.classList.contains('move')) return;
-  const id = e.target.closest('.item').dataset.id;
-  try {
-    await moveCard(id, e.target.value);
-    load();
-  } catch (err) {
-    statusEl.textContent = 'Could not move: ' + err.message;
+  if (e.target.classList.contains('move')) {
+    const id = e.target.closest('.item').dataset.id;
+    try {
+      await moveCard(id, e.target.value);
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not move: ' + err.message;
+    }
+    return;
+  }
+  if (e.target.classList.contains('move-board')) {
+    const id = e.target.closest('.item').dataset.id;
+    try {
+      await moveCardBoard(id, e.target.value);
+      load();
+    } catch (err) {
+      statusEl.textContent = 'Could not move: ' + err.message;
+    }
   }
 });
 

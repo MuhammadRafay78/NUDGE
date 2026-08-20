@@ -9,6 +9,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
+const BOARDS = ['main', 'qtm'];
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -66,6 +67,7 @@ function addCard(code, patch) {
     cardId: (patch.cardId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
+    board: BOARDS.includes(patch.board) ? patch.board : 'main',
     createdAt: now,
     updatedAt: now
   };
@@ -157,6 +159,9 @@ app.patch('/api/cards/:id', (req, res) => {
   if (body.column !== undefined && !COLUMNS.includes(body.column)) {
     return res.status(400).json({ ok: false, error: 'Invalid column.' });
   }
+  if (body.board !== undefined && !BOARDS.includes(body.board)) {
+    return res.status(400).json({ ok: false, error: 'Invalid board.' });
+  }
 
   const boards = loadBoards();
   const cards = boards[code] || [];
@@ -167,6 +172,7 @@ app.patch('/api/cards/:id', (req, res) => {
      pass sends {context, due, cardId} without column, a drag/drop sends
      {column} alone */
   if (body.column !== undefined) card.column = body.column;
+  if (body.board !== undefined) card.board = body.board;
   if (body.context !== undefined) card.context = String(body.context).slice(0, 200);
   if (body.due !== undefined) card.due = String(body.due).slice(0, 40);
   if (body.cardId !== undefined) card.cardId = String(body.cardId).slice(0, 60);

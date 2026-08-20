@@ -25,6 +25,16 @@
     .search-clear:hover { color: var(--fg); background: var(--line); }
     .item mark { background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 0 1px; }
 
+    .board-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+    .board-tab {
+      font: inherit; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--card);
+      border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px; cursor: pointer;
+      transition: color .1s, border-color .1s, background .1s;
+    }
+    .board-tab:hover { color: var(--fg); border-color: var(--accent); }
+    .board-tab.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+    .board-tab .n { color: inherit; opacity: .75; font-weight: 700; }
+
     .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: start; }
     @media (max-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .board { grid-template-columns: 1fr; } }
@@ -56,9 +66,10 @@
     .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
     .item .row2 { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
     .item .when { color: var(--muted); font-size: 11px; flex: 1 1 auto; min-width: 0; }
-    .item .move { font: inherit; color: var(--fg); font-size: 11px; font-weight: 550; background: var(--card);
-      border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; cursor: pointer; max-width: 108px; }
-    .item .move:hover { border-color: var(--accent); }
+    .item .move, .item .move-board { font: inherit; color: var(--fg); font-size: 11px; font-weight: 550;
+      background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px;
+      cursor: pointer; max-width: 108px; }
+    .item .move:hover, .item .move-board:hover { border-color: var(--accent); }
     .item .acts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 9px; }
     .item .acts .hist-btn, .item .acts .reply-btn {
       color: var(--fg); font-size: 11.5px; font-weight: 550; background: var(--card);
@@ -150,6 +161,8 @@
 <body>
   <h1>Board</h1>
   <p class="lede">Every new tag lands in Inbox, shared with the same board on your paired phone. Drag a card between columns to move it.</p>
+
+  <div class="board-tabs" id="boardTabs"></div>
 
   <div class="bar2">
     <div class="search-wrap">
