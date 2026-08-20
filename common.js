@@ -3091,16 +3091,14 @@ var QA = (function () {
     { id: 'done', label: 'Done' }
   ];
 
-  /* Four boards sharing the same four columns above — a card lives on
+  /* Three boards sharing the same four columns above — a card lives on
      exactly one. "Main" is everything else: one-off client asks, replies,
-     deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself.
-     "Master Data" is the separate, ongoing job of keeping a client's
-     underlying data file current — not tied to any one meeting. "Tax Plan
-     Draft" is a fixed rule, not an AI guess — see keywordBoardOverride. */
+     deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself. "Tax
+     Plan Draft" is a fixed rule, not an AI guess — see
+     keywordBoardOverride. */
   const BOARDS = [
     { id: 'main', label: 'Main' },
     { id: 'qtm', label: 'QTM' },
-    { id: 'masterdata', label: 'Master Data' },
     { id: 'taxplan', label: 'Tax Plan Draft' }
   ];
 
@@ -3123,12 +3121,11 @@ var QA = (function () {
   }
 
   const BOARD_CLASSIFY_SYSTEM = [
-    'You sort a freshly-tagged Trello card onto one of three boards for a tax professional.',
+    'You sort a freshly-tagged Trello card onto one of two boards for a tax professional.',
     'MAIN: a specific, one-off client ask — a reply needed, a decision, a delivery to make, a document to review, anything that reads as an individual action item for a particular client.',
-    'QTM: quarterly-tax-meeting prep or follow-up — a pending-items checklist from a QTM/quarterly review call, post-call recap items, election-status confirmation, anything tied to that recurring meeting itself.',
-    'MASTERDATA: keeping a client\'s underlying data file current, independent of any one meeting — pulling or entering transcripts (Account, Wage & Income), reconciling master data against what a client reports, factoring newly available records into the master data set.',
+    'QTM: quarterly-tax-meeting prep or follow-up — a pending-items checklist from a QTM/quarterly review call, post-call recap items, election-status confirmation, transcript or data-entry upkeep tied to that recurring meeting, anything tied to that cycle itself.',
     'You are given the card\'s name (often prefixed with a code like QTM2 or TPR — that prefix alone does not decide the board; read what the NOTE actually says the task is) and its NOTE, the real comment text.',
-    'Answer with exactly one word: main, qtm, or masterdata. Nothing else — no punctuation, no explanation.'
+    'Answer with exactly one word: main or qtm. Nothing else — no punctuation, no explanation.'
   ].join('\n');
 
   /* Runs once per freshly-filed card (auto-tagged or the popup's "+ Board"),
@@ -3160,8 +3157,7 @@ var QA = (function () {
       const body = await res.json();
       const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
       const said = parts.map(function (p) { return p.text || ''; }).join('').trim().toLowerCase();
-      const board = said.indexOf('masterdata') === 0 ? 'masterdata' : said.indexOf('qtm') === 0 ? 'qtm' : 'main';
-      return { ok: true, board: board };
+      return { ok: true, board: said.indexOf('qtm') === 0 ? 'qtm' : 'main' };
     } catch (e) {
       return { ok: false, board: 'main' };
     }

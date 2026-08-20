@@ -59,10 +59,13 @@ let replyDraft = null;           // live text of the modal's reply box — the m
                                   // modal's own comment-list reload does rebuild it, hence tracking this
 let attachedImage = null;        // { file, previewUrl } picked for the modal's reply box, or null
 
-/* Main vs QTM vs Master Data — three boards sharing the same four columns.
-   A card filed before this shipped has no .board at all, which is treated
-   as Main so nothing already on the board silently vanishes from view. */
-function cardBoard(c) { return c.board || 'main'; }
+/* Main vs QTM vs Tax Plan Draft — three boards sharing the same four
+   columns. A card with no .board (filed before boards existed) or one
+   that names a board that's since been retired (e.g. the old
+   "masterdata") falls back to Main instead of vanishing from every tab. */
+function cardBoard(c) {
+  return (c.board && QA.BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
+}
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
 if (!QA.BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 

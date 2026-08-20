@@ -5,7 +5,7 @@ const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
-const BOARDS = ['main', 'qtm', 'masterdata', 'taxplan'];
+const BOARDS = ['main', 'qtm', 'taxplan'];
 const boardKey = (code) => 'board:' + code;
 
 function newCode() {
