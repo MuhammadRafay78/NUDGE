@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
-const BOARDS = ['main', 'qtm', 'taxplan'];
+const BOARDS = ['main', 'qtm', 'taxplan', 'slack'];
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';

@@ -5,16 +5,18 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
-/* Three boards sharing the same four columns above — Main for one-off
+/* Four boards sharing the same four columns above — Main for one-off
    client asks, QTM for quarterly-tax-meeting prep/follow-up (including its
    own data upkeep), Tax Plan Draft for anything mentioning a discovery
-   call prep note. A freshly-tagged card picks one automatically (see the
-   extension's classifyCardBoard/keywordBoardOverride); this is just which
+   call prep note, Slack for tasks read off an open Slack tab. A freshly-
+   tagged card picks one automatically (see the extension's
+   classifyCardBoard/keywordBoardOverride/checkSlack); this is just which
    one is on screen right now. */
 const BOARDS = [
   { id: 'main', label: 'Main' },
   { id: 'qtm', label: 'QTM' },
-  { id: 'taxplan', label: 'Tax Plan Draft' }
+  { id: 'taxplan', label: 'Tax Plan Draft' },
+  { id: 'slack', label: 'Slack' }
 ];
 /* A card with no .board (filed before boards existed) or one that names a
    board that's since been retired (e.g. the old "masterdata") falls back

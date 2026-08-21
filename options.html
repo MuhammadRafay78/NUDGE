@@ -134,6 +134,26 @@
     </p>
   </div>
 
+  <div class="card" id="slackWatch">
+    <div class="head"><b style="font-size:15px">Slack (experimental)</b></div>
+    <p class="hint" style="margin:6px 0 0">
+      Reads an open Slack tab — a DM, or an @mention in a channel — and files anything that reads as
+      a real task onto its own <b>Slack</b> board, using the same key and judgment as Sort mentions
+      above. It never opens a Slack tab itself, never posts anything, and only ever reads text that's
+      newly appeared since the last check.
+    </p>
+    <p class="hint" style="margin:8px 0 0">
+      <b>New and unverified against your actual Slack.</b> Unlike the rest of this extension, this
+      hasn't been tested against a real, live Slack page — it may miss things, or need a fix once you
+      try it. Off by default; turn it on and tell me what happens.
+    </p>
+    <div class="actions">
+      <label class="toggle"><input type="checkbox" id="slackOn"> Watch Slack for tasks</label>
+      <span class="spacer"></span>
+      <span class="saved" id="slackState"></span>
+    </div>
+  </div>
+
   <div class="card" id="notify">
     <div class="head"><b style="font-size:15px">Desktop notifications</b></div>
     <p class="hint" style="margin:6px 0 0">
