@@ -535,15 +535,14 @@ var QA = (function () {
   /* time windows */
   /* ================= whose day is it =================
      Every date boundary here used to be the machine's own midnight. He works from
-     Pakistan for a firm on US Central time, so "Today" rolled over about eleven
-     hours before the firm's day did: at 00:05 in Karachi it is still early
-     afternoon of the previous day in Dallas, and the panel would show nothing.
-     Trello due dates read a day late for the same reason.
+     Pakistan for a firm on US Eastern time, so "Today" rolled over hours before
+     the firm's day did, and the panel would show nothing yet. Trello due dates
+     read a day off for the same reason.
 
      So the business day is what counts, in a named zone rather than a fixed
-     offset — "CST" is actually CDT for most of the tax year, and America/Chicago
+     offset — "EST" is actually EDT for most of the year, and America/New_York
      handles that switch by itself. */
-  const BIZ_ZONE_DEFAULT = 'America/Chicago';
+  const BIZ_ZONE_DEFAULT = 'America/New_York';
   let BIZ_ZONE = BIZ_ZONE_DEFAULT;
 
   function setZone(tz) {
