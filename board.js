@@ -485,6 +485,7 @@ async function sendReply() {
     clearAttachedImage();
     delete replyDefaultUser[card.id];
     try { await QA.moveCard(card.id, 'done'); } catch (e) {}
+    QA.markCardHandled(card).catch(() => {});   // tell Trello too, so the popup stops showing it pending
     loadHistory(card.id);   // refresh the thread in place — the modal stays open
     load();
   } else {
@@ -574,8 +575,10 @@ boardEl.addEventListener('click', async (e) => {
 boardEl.addEventListener('change', async (e) => {
   if (e.target.classList.contains('move')) {
     const id = e.target.closest('.item').dataset.id;
+    const card = cardsById[id];
     try {
       await QA.moveCard(id, e.target.value);
+      if (card) QA.markCardHandled(card).catch(() => {});   // a deliberate move is "I've dealt with this"
       load();
     } catch (err) {
       statusEl.textContent = 'Could not move: ' + err.message;
@@ -584,8 +587,10 @@ boardEl.addEventListener('change', async (e) => {
   }
   if (e.target.classList.contains('move-board')) {
     const id = e.target.closest('.item').dataset.id;
+    const card = cardsById[id];
     try {
       await QA.updateCard(id, { board: e.target.value });
+      if (card) QA.markCardHandled(card).catch(() => {});
       load();
     } catch (err) {
       statusEl.textContent = 'Could not move: ' + err.message;
@@ -819,8 +824,10 @@ boardEl.addEventListener('drop', async (e) => {
   col.classList.remove('drag-over');
   const id = e.dataTransfer.getData('text/plain');
   if (!id) return;
+  const card = cardsById[id];
   try {
     await QA.moveCard(id, col.dataset.col);
+    if (card) QA.markCardHandled(card).catch(() => {});   // a deliberate move is "I've dealt with this"
     load();
   } catch (err) {
     statusEl.textContent = 'Could not move: ' + err.message;

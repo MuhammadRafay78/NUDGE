@@ -3201,7 +3201,7 @@ var QA = (function () {
         code: cx.code, title: f.title, body: f.body || '', url: f.url || '',
         column: f.column || 'inbox', board: f.board || 'main', context: f.context || '', due: f.due || '',
         dueAt: f.dueAt || '', dueComplete: !!f.dueComplete,
-        cardId: f.cardId || '', actorUser: f.actorUser || ''
+        cardId: f.cardId || '', notifId: f.notifId || '', actorUser: f.actorUser || ''
       })
     });
     return data.card;
@@ -3258,6 +3258,36 @@ var QA = (function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: cx.code })
     });
+  }
+
+  /* The board and the popup's mention list used to be two completely
+     disconnected views of the same work — replying or moving a card on one
+     never told the other anything, so a card you'd clearly dealt with on
+     the board kept showing up as a pending mention (and vice versa). Both
+     "handled" here and rememberHandled above answer to the same source of
+     truth — Trello's own read flag on the notification — so marking it
+     from the board makes the popup agree immediately, same as replying
+     from the popup already marks Trello read. Silent no-op on a card that
+     predates notifId (nothing to mark) or with no Trello tab open — a
+     sync failure must never block the action that triggered it. */
+  async function markCardHandled(card) {
+    if (!card || !card.notifId) return { ok: false, error: 'no notification id on this card' };
+    return inTrelloTab(setNotificationRead, [card.notifId, true], true);
+  }
+
+  /* The reverse direction: replying from the popup used to leave the board
+     card sitting wherever it was, even though the board's own reply
+     composer moves its card to Done the moment a reply goes out. Mirrors
+     that here — every board card tied to the same Trello card moves to
+     Done too. Best-effort: a missing/misconfigured board server (or one
+     simply not set up) must never fail the reply itself. */
+  async function syncBoardAfterReply(cardId) {
+    if (!cardId) return;
+    try {
+      const cards = await fetchCards();
+      const mine = cards.filter((c) => c.cardId === cardId && c.column !== 'done');
+      await Promise.all(mine.map((c) => moveCard(c.id, 'done').catch(() => {})));
+    } catch (e) { /* no board configured, or unreachable — nothing to sync */ }
   }
 
   /* Build the grounding context. Trello's structured notifications first, since
@@ -4548,6 +4578,7 @@ var QA = (function () {
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
+    markCardHandled, syncBoardAfterReply,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

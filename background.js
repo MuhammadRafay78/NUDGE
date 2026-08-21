@@ -89,10 +89,14 @@ async function fileTagCard(item) {
       }
     }
   }
+  /* the notification this tag came from, so a later reply or board move can
+     tell Trello (and so the popup) it's been dealt with — same "tn:" prefix
+     rememberHandled strips elsewhere */
+  const notifId = item.hash && item.hash.indexOf('tn:') === 0 ? item.hash.slice(3) : (item.notificationId || '');
   await QA.fileCard({
     title: title, body: item.text || '', url: item.href || '',
     context: context, due: due, dueAt: dueAt, dueComplete: dueComplete,
-    cardId: item.cardId || '', actorUser: item.actorUser || ''
+    cardId: item.cardId || '', notifId: notifId, actorUser: item.actorUser || ''
   });
 }
 
