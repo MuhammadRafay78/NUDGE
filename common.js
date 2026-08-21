@@ -3345,7 +3345,11 @@ var QA = (function () {
      rather than guessing; a failed read must never surface a false task. */
   async function extractSlackTasks(chunk, isDM, myNames) {
     const cfg = await getTriage();
-    if (!cfg.enabled || !cfg.apiKey || !chunk) return [];
+    /* reuses Sort Mentions' key/model, but not its own on/off switch — Slack
+       watching has its own toggle (slackWatch.on, checked before this is ever
+       called), and requiring Sort Mentions to also be on would silently break
+       Slack for anyone who pasted a key but never turned that feature on. */
+    if (!cfg.apiKey || !chunk) return [];
     const names = (myNames && myNames.length ? myNames : ME).join(', ');
     const system = SLACK_TASK_SYSTEM.replace(/\[NAMES\]/g, names);
     try {
