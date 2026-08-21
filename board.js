@@ -1004,6 +1004,10 @@ function passiveRefresh() {
   if (document.visibilityState === 'visible') load();
 }
 
-load();
+/* getMemory() applies whatever business-day zone is set in Settings >
+   "whose day counts" (Chicago by default) as a side effect — the board
+   never called it, so every due-date label here was silently anchored to
+   that hardcoded default no matter what the settings actually said. */
+QA.getMemory().then(load);
 setInterval(passiveRefresh, 12000);
 document.addEventListener('visibilitychange', passiveRefresh);

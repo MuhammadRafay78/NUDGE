@@ -1743,6 +1743,11 @@ let WIRED = false;
 async function wire() {
   if (WIRED) return;   // attach exactly once, however we got here
   WIRED = true;
+  /* getMemory() applies whatever business-day zone is set in Settings >
+     "whose day counts" (Chicago by default) as a side effect — nothing
+     here called it before, so every due-date chip was silently anchored
+     to that hardcoded default no matter what the settings actually said. */
+  await QA.getMemory();
   const pref = await chrome.storage.sync.get({ rangeMode: 'today', group: 'all', customDate: '' });
   const validModes = QA.UI_RANGES.concat(['custom']);
   RANGE_MODE = validModes.indexOf(pref.rangeMode) === -1 ? 'today' : pref.rangeMode;

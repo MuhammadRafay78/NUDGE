@@ -211,6 +211,13 @@ async function runCheckTrello(reason) {
   if (now - lastPoll < POLL_FLOOR_MS) return { skipped: 'too soon' };
   lastPoll = now;
 
+  /* applies Settings > "whose day counts" as a side effect — a service
+     worker can be torn down and restarted between polls, and this call is
+     what's missing on a fresh restart, so due labels on auto-filed cards
+     stayed anchored to the hardcoded default until the popup happened to
+     be opened too. */
+  await QA.getMemory();
+
   const read = await readNotifications();
   const tab = read.tab;
   const raw = read.raw;
