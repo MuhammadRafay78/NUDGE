@@ -825,6 +825,7 @@ function cardFor(item) {
     const res = await QA.fileCard({
       title: (item.actor || 'Someone') + ' tagged you', body: item.text || '', url: item.href || '',
       context: item.cardName || '', due: lab ? lab.text : '',
+      dueAt: d ? d.due || '' : '', dueComplete: d ? !!d.dueComplete : false,
       cardId: item.cardId || '', actorUser: item.actorUser || ''
     });
     const note = card.querySelector('[data-role=boardnote]') || document.createElement('div');

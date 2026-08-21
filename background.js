@@ -70,6 +70,8 @@ async function fileTagCard(item) {
   const title = (item.actor || 'Someone') + ' tagged you';
   let context = item.cardName || '';
   let due = '';
+  let dueAt = '';
+  let dueComplete = false;
   /* best effort: the notification payload never carries a due date and only
      sometimes carries the card name, so ask Trello for the real thing when
      there's a card to ask about. Needs an open Trello tab (same constraint
@@ -80,6 +82,8 @@ async function fileTagCard(item) {
     if (got && got.ok) {
       if (got.name) context = got.name;
       if (got.due) {
+        dueAt = got.due;
+        dueComplete = !!got.dueComplete;
         const lab = QA.dueLabel(got.due, got.dueComplete);
         if (lab) due = lab.text;
       }
@@ -87,7 +91,8 @@ async function fileTagCard(item) {
   }
   await QA.fileCard({
     title: title, body: item.text || '', url: item.href || '',
-    context: context, due: due, cardId: item.cardId || '', actorUser: item.actorUser || ''
+    context: context, due: due, dueAt: dueAt, dueComplete: dueComplete,
+    cardId: item.cardId || '', actorUser: item.actorUser || ''
   });
 }
 

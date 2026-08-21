@@ -66,6 +66,23 @@ let attachedImage = null;        // { file, previewUrl } picked for the modal's 
 function cardBoard(c) {
   return (c.board && QA.BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
+
+/* "3 days overdue" baked into text at filing time freezes there forever —
+   it's a fact about a gap between two dates, not a fact about the card, so
+   it has to be recomputed against *now* every time it's shown rather than
+   stored as a fixed string. Every card filed since dueAt/dueComplete
+   shipped carries the raw values for exactly that; the render loop already
+   runs often enough (auto-refresh, focus, every action) that this alone
+   keeps it current with no separate polling. A card from before that (or
+   one never backfilled) falls back to whatever static text it already has. */
+function dueText(card) {
+  if (card.dueAt) {
+    const lab = QA.dueLabel(card.dueAt, card.dueComplete);
+    if (lab) return lab.text;
+  }
+  return card.due || '';
+}
+
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
 if (!QA.BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 
@@ -169,6 +186,7 @@ function itemHtml(card, terms) {
      the heading). */
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
+  const due = dueText(card);
   const moveOptions = QA.BOARD_COLUMNS.map((c) =>
     '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
@@ -187,7 +205,7 @@ function itemHtml(card, terms) {
       '<span class="handle" title="Drag to move between columns" aria-hidden="true">&#8942;&#8942;</span>' +
       '<div class="t" title="' + esc(heading) + '">' + hi(heading, terms) + '</div>' +
       (byline ? '<div class="sub">' + hi(byline, terms) + '</div>' : '') +
-      (card.due ? '<div class="due">' + hi(card.due, terms) + '</div>' : '') +
+      (due ? '<div class="due">' + hi(due, terms) + '</div>' : '') +
       (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + hi(body, terms) + '</div>' : '') +
       (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
       /* Action pills get their own row so they can wrap on a narrow card
@@ -275,6 +293,7 @@ function composerHtml(card) {
 function modalHtml(card) {
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
+  const due = dueText(card);
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>'
     : '';
@@ -297,7 +316,7 @@ function modalHtml(card) {
       '<button class="modal-close" title="Close">&times;</button>' +
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
-      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      (due ? '<div class="due">' + esc(due) + '</div>' : '') +
       trelloLink +
     '</div>' +
     '<div class="modal-body">' + body + '</div>' +
@@ -823,7 +842,14 @@ function shortLinkFromUrl(url) {
 }
 
 backfillBtn.addEventListener('click', async () => {
-  const targets = Object.values(cardsById).filter((c) => !c.cardId && shortLinkFromUrl(c.url));
+  /* two kinds of gap: a card with no Trello link at all (the original
+     reason this button exists), and a card that's properly linked but was
+     filed before dueAt existed — its "N days overdue" text is frozen at
+     whatever it said the day it was filed, so it needs the same re-fetch
+     to start recomputing live. */
+  const targets = Object.values(cardsById).filter((c) =>
+    (!c.cardId && shortLinkFromUrl(c.url)) || (c.cardId && !c.dueAt)
+  );
   if (!targets.length) {
     statusEl.textContent = 'Nothing to backfill — every card either has this already or has no Trello card to look up.';
     return;
@@ -833,7 +859,7 @@ backfillBtn.addEventListener('click', async () => {
   let failed = 0;
   for (const card of targets) {
     backfillBtn.textContent = 'Backfilling ' + (done + failed + 1) + ' of ' + targets.length + '…';
-    const shortLink = shortLinkFromUrl(card.url);
+    const shortLink = card.cardId || shortLinkFromUrl(card.url);
     try {
       const got = await QA.cardDetailsFor(shortLink, true);   // explicit click — worth opening a tab for
       if (!got || !got.ok) { failed++; continue; }
@@ -841,7 +867,9 @@ backfillBtn.addEventListener('click', async () => {
       await QA.updateCard(card.id, {
         cardId: shortLink,
         context: got.name || card.context || '',
-        due: lab ? lab.text : (card.due || '')
+        due: lab ? lab.text : (card.due || ''),
+        dueAt: got.due || '',
+        dueComplete: !!got.dueComplete
       });
       done++;
     } catch (e) {
