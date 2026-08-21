@@ -51,6 +51,12 @@ async function addCard(env, code, patch) {
     url: patch.url || '',
     context: (patch.context || '').slice(0, 200),
     due: (patch.due || '').slice(0, 40),
+    /* the raw due date + completion flag, kept alongside the pre-formatted
+       `due` label above so "3 days overdue" can be recomputed fresh on
+       every render instead of freezing at whatever it said the moment the
+       card was filed */
+    dueAt: (patch.dueAt || '').slice(0, 40),
+    dueComplete: !!patch.dueComplete,
     cardId: (patch.cardId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
@@ -168,6 +174,8 @@ export default {
       if (payload.board !== undefined) card.board = payload.board;
       if (payload.context !== undefined) card.context = String(payload.context).slice(0, 200);
       if (payload.due !== undefined) card.due = String(payload.due).slice(0, 40);
+      if (payload.dueAt !== undefined) card.dueAt = String(payload.dueAt).slice(0, 40);
+      if (payload.dueComplete !== undefined) card.dueComplete = !!payload.dueComplete;
       if (payload.cardId !== undefined) card.cardId = String(payload.cardId).slice(0, 60);
       if (payload.actorUser !== undefined) card.actorUser = String(payload.actorUser).slice(0, 60);
       card.updatedAt = Date.now();

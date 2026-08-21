@@ -64,6 +64,8 @@ function addCard(code, patch) {
     url: patch.url || '',
     context: (patch.context || '').slice(0, 200),
     due: (patch.due || '').slice(0, 40),
+    dueAt: (patch.dueAt || '').slice(0, 40),
+    dueComplete: !!patch.dueComplete,
     cardId: (patch.cardId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
@@ -175,6 +177,8 @@ app.patch('/api/cards/:id', (req, res) => {
   if (body.board !== undefined) card.board = body.board;
   if (body.context !== undefined) card.context = String(body.context).slice(0, 200);
   if (body.due !== undefined) card.due = String(body.due).slice(0, 40);
+  if (body.dueAt !== undefined) card.dueAt = String(body.dueAt).slice(0, 40);
+  if (body.dueComplete !== undefined) card.dueComplete = !!body.dueComplete;
   if (body.cardId !== undefined) card.cardId = String(body.cardId).slice(0, 60);
   if (body.actorUser !== undefined) card.actorUser = String(body.actorUser).slice(0, 60);
   card.updatedAt = Date.now();

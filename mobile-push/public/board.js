@@ -23,6 +23,36 @@ function cardBoard(c) {
   return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
+/* Whole calendar days in this phone's own local time — good enough for a
+   personal device, and simpler than the extension's business-timezone
+   version since there's only one reader to get right here. */
+function dueLabel(due, dueComplete) {
+  if (!due) return null;
+  const then = new Date(due);
+  if (isNaN(then.getTime())) return null;
+  const dayStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const days = Math.round((dayStart(then) - dayStart(new Date())) / 864e5);
+  const date = then.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  if (dueComplete) return { text: 'Due ' + date, done: true };
+  if (days < 0) { const n = Math.abs(days); return { text: n === 1 ? 'Due yesterday' : n + ' days overdue' }; }
+  if (days === 0) return { text: 'Due today' };
+  if (days === 1) return { text: 'Due tomorrow' };
+  return { text: 'Due ' + date };
+}
+
+/* "3 days overdue" baked into text at filing time freezes there forever —
+   recompute it from the raw due date on every render instead (the board
+   already reloads on an interval and on focus, so this alone keeps it
+   current with no separate polling). A card from before dueAt existed
+   falls back to whatever static text it already has. */
+function dueText(card) {
+  if (card.dueAt) {
+    const lab = dueLabel(card.dueAt, card.dueComplete);
+    if (lab) return lab.text;
+  }
+  return card.due || '';
+}
+
 const code = localStorage.getItem('nudgeCode');
 const boardEl = document.getElementById('board');
 const boardTabsEl = document.getElementById('boardTabs');
@@ -98,11 +128,12 @@ function itemHtml(card) {
      hand-typed card with no client name yet, it's all there is). */
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
+  const due = dueText(card);
   return (
     '<div class="item" data-id="' + esc(card.id) + '">' +
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
-      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      (due ? '<div class="due">' + esc(due) + '</div>' : '') +
       (body ? '<div class="b">' + esc(body) + '</div>' : '') +
       /* Two selects plus the timestamp/Trello-link/delete button couldn't
          fit on one row on a phone-width tile without crushing "when" down
@@ -152,6 +183,7 @@ function formatBodyHtml(text) {
 function modalHtml(card) {
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
+  const due = dueText(card);
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Reply on Trello &#8599;</a>'
     : '';
@@ -160,7 +192,7 @@ function modalHtml(card) {
       '<button class="modal-close" title="Close">&times;</button>' +
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
-      (card.due ? '<div class="due">' + esc(card.due) + '</div>' : '') +
+      (due ? '<div class="due">' + esc(due) + '</div>' : '') +
       trelloLink +
     '</div>' +
     '<div class="modal-body">' + formatBodyHtml(card.body) + '</div>'

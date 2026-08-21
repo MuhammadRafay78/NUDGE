@@ -3200,6 +3200,7 @@ var QA = (function () {
       body: JSON.stringify({
         code: cx.code, title: f.title, body: f.body || '', url: f.url || '',
         column: f.column || 'inbox', board: f.board || 'main', context: f.context || '', due: f.due || '',
+        dueAt: f.dueAt || '', dueComplete: !!f.dueComplete,
         cardId: f.cardId || '', actorUser: f.actorUser || ''
       })
     });
@@ -3410,6 +3411,7 @@ var QA = (function () {
     'Write ONE short message — a sentence or two of lead-in, then a list of the client/QTM names being worked on today (from Doing, plus anything in Action Items or due today/overdue worth flagging).',
     'For each name in that list, if the card has a DUE value, show it in parentheses right after the name, copied exactly as given (do not reword or re-case it) — then a short clause (roughly 5-12 words) describing what the task actually is, written from its NOTE. Full shape: "Dane Nakama (Due tomorrow) — waiting on K-1s before finishing the projection." Read the NOTE and say what it means in your own words; do not just repeat it verbatim, and do not pad with filler if it is already short. Skip the parentheses entirely for a card with no DUE — never invent one. If a card has no NOTE, list just the name (and its DUE, if any) with no invented description.',
     'Skip Done and Inbox entirely unless something there is due today or overdue.',
+    'Skip any card whose NOTE is about a forecast/forecasting deliverable entirely — that work is Dwight\'s, not his, so it never belongs on his own status update even if it is overdue.',
     'Never invent a client name, QTM code, due date, or task detail that is not in the data given. If there is nothing to report, say so plainly in one line.',
     'No markdown headers. One item per line, dash-prefixed. Plain text, the way a person would actually type a quick message.'
   ].join('\n');
