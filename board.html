@@ -47,6 +47,20 @@
     .col h2 .n { color: var(--fg); font-weight: 700; }
     .empty { color: var(--muted); font-size: 12.5px; padding: 8px 6px; }
 
+    .add-card { display: block; width: 100%; text-align: left; margin-top: 6px; padding: 8px 6px;
+      font: inherit; font-size: 13px; font-weight: 550; color: var(--muted); background: none;
+      border: none; border-radius: 8px; cursor: pointer; transition: background .1s, color .1s; }
+    .add-card:hover { color: var(--accent); background: var(--accent-soft); }
+    .new-card { margin-top: 6px; }
+    .new-card-in { width: 100%; font: inherit; font-size: 13.5px; padding: 8px 9px; resize: vertical;
+      border-radius: 8px; border: 1px solid var(--accent); background: var(--bg); color: var(--fg); }
+    .new-card-acts { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .new-card-save { font: inherit; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--accent);
+      border: none; border-radius: 7px; padding: 6px 12px; cursor: pointer; }
+    .new-card-cancel { font: inherit; font-size: 12.5px; color: var(--muted); background: none;
+      border: none; cursor: pointer; padding: 6px 4px; }
+    .new-card-cancel:hover { color: var(--fg); }
+
     .item { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
       padding: 10px 26px 10px 11px; margin-bottom: 8px; cursor: grab; min-width: 0; transition: border-color .1s, box-shadow .1s; }
     .item:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.06); }
