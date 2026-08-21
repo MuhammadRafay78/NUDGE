@@ -58,6 +58,10 @@ async function addCard(env, code, patch) {
     dueAt: (patch.dueAt || '').slice(0, 40),
     dueComplete: !!patch.dueComplete,
     cardId: (patch.cardId || '').slice(0, 60),
+    /* the id of the Trello notification this card came from, if any — set
+       once at filing time so the board can later tell Trello (and so the
+       extension's popup) that mention has been dealt with */
+    notifId: (patch.notifId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
     board: BOARDS.includes(patch.board) ? patch.board : 'main',

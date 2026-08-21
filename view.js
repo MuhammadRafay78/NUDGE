@@ -575,6 +575,7 @@ function replyBox(item, card) {
       status.textContent = 'Sent';
       REPLYING = null;
       await markDone(item, false);
+      QA.syncBoardAfterReply(item.cardId);   // best-effort: move any matching board card to Done too
     } else {
       send.disabled = false;
       cancel.disabled = false;
@@ -822,11 +823,12 @@ function cardFor(item) {
     board.textContent = 'Adding…';
     const d = dueOf(item);
     const lab = d ? QA.dueLabel(d.due, d.dueComplete) : null;
+    const notifId = item.hash && item.hash.indexOf('tn:') === 0 ? item.hash.slice(3) : (item.notificationId || '');
     const res = await QA.fileCard({
       title: (item.actor || 'Someone') + ' tagged you', body: item.text || '', url: item.href || '',
       context: item.cardName || '', due: lab ? lab.text : '',
       dueAt: d ? d.due || '' : '', dueComplete: d ? !!d.dueComplete : false,
-      cardId: item.cardId || '', actorUser: item.actorUser || ''
+      cardId: item.cardId || '', notifId: notifId, actorUser: item.actorUser || ''
     });
     const note = card.querySelector('[data-role=boardnote]') || document.createElement('div');
     note.dataset.role = 'boardnote';
