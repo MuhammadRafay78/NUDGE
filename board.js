@@ -49,6 +49,7 @@ let dragging = false;         // suppress auto-refresh mid-drag so the drop targ
 let cardsById = {};            // last-rendered cards
 let lastCards = [];            // same, as a plain list — re-filtered on every search keystroke
 let searchQuery = '';          // live text of the search box, survives a refresh
+let addingToCol = null;        // column id currently showing the "+ Add a card" composer, or null
 const peopleCache = {};        // cardId -> [{username, fullName}], fetched once per open
 let modalCardId = null;          // which card's "Open card" modal is showing, or null
 const historyCache = {};         // card id -> { loading } | { ok:true, comments } | { ok:false, error }
@@ -386,6 +387,24 @@ function matchesSearch(card, terms) {
   return terms.every((t) => hay.indexOf(t) > -1);
 }
 
+/* A hand-typed card has no cardId, so it's read-only on the Trello side —
+   no Reply, no Open card — same as any other card without one; it exists
+   purely to hold a place on the board. */
+function addCardFooterHtml(colId) {
+  if (addingToCol === colId) {
+    return (
+      '<div class="new-card">' +
+        '<textarea class="new-card-in" rows="2" placeholder="Card title…"></textarea>' +
+        '<div class="new-card-acts">' +
+          '<button class="new-card-save">Add card</button>' +
+          '<button class="new-card-cancel">Cancel</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+  return '<button class="add-card" data-col="' + colId + '">+ Add a card</button>';
+}
+
 function render(cards) {
   lastCards = cards;
   cardsById = {};
@@ -407,9 +426,15 @@ function render(cards) {
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
         (items.length ? items.map((c) => itemHtml(c, terms)).join('')
           : '<div class="empty">' + (terms.length ? 'No matches here.' : 'Nothing here.') + '</div>') +
+        addCardFooterHtml(col.id) +
       '</div>'
     );
   }).join('');
+
+  if (addingToCol) {
+    const ta = boardEl.querySelector('.new-card-in');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }
 }
 
 /* ---------- reply, including @mention autocomplete — all modal-scoped,
@@ -531,7 +556,37 @@ async function handleModalReactClick(e) {
   note.textContent = res.already ? r.emoji + ' already there' : r.emoji + ' added';
 }
 
+async function submitNewCard(colId) {
+  const ta = boardEl.querySelector('.new-card-in');
+  const text = (ta && ta.value || '').trim();
+  if (!text) { addingToCol = null; render(lastCards); return; }
+  try {
+    await QA.createCard({ title: text, column: colId, board: activeBoard });
+    addingToCol = null;
+    load();
+  } catch (err) {
+    statusEl.textContent = 'Could not add card: ' + err.message;
+  }
+}
+
 boardEl.addEventListener('click', async (e) => {
+  if (e.target.classList.contains('add-card')) {
+    addingToCol = e.target.dataset.col;
+    render(lastCards);
+    return;
+  }
+
+  if (e.target.classList.contains('new-card-cancel')) {
+    addingToCol = null;
+    render(lastCards);
+    return;
+  }
+
+  if (e.target.classList.contains('new-card-save')) {
+    await submitNewCard(e.target.closest('.col').dataset.col);
+    return;
+  }
+
   if (e.target.classList.contains('more')) {
     const id = e.target.closest('.item').dataset.id;
     const b = e.target.previousElementSibling;
@@ -570,6 +625,17 @@ boardEl.addEventListener('click', async (e) => {
   if (!card || !card.cardId) return;
   if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
   openModal(item.dataset.id, false);
+});
+
+boardEl.addEventListener('keydown', async (e) => {
+  if (!e.target.classList.contains('new-card-in')) return;
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    await submitNewCard(e.target.closest('.col').dataset.col);
+  } else if (e.key === 'Escape') {
+    addingToCol = null;
+    render(lastCards);
+  }
 });
 
 boardEl.addEventListener('change', async (e) => {
