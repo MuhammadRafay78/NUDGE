@@ -261,6 +261,24 @@ if (location.hash === '#ai') document.getElementById('ai').scrollIntoView({ beha
 
 QA.getRules().then((r) => { rules = r; draw(); });
 
+/* ---------- Slack (experimental) ---------- */
+
+const slOn = document.getElementById('slackOn');
+const slState = document.getElementById('slackState');
+
+if (slOn) {
+  chrome.storage.sync.get({ slackWatch: null }).then((g) => {
+    slOn.checked = !!(g.slackWatch && g.slackWatch.on);
+  });
+
+  slOn.addEventListener('change', async () => {
+    const g = await chrome.storage.sync.get({ slackWatch: null });
+    await chrome.storage.sync.set({ slackWatch: Object.assign({}, g.slackWatch || {}, { on: slOn.checked }) });
+    slState.textContent = slOn.checked ? ' On — checked every couple of minutes while a Slack tab is open.' : '';
+    flash('Saved.');
+  });
+}
+
 /* ---------- desktop notifications ---------- */
 
 const nOn = document.getElementById('notifyOn');

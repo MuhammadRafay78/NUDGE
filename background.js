@@ -24,6 +24,19 @@ async function getNotify() {
   return Object.assign({ on: true, everyMin: 1, sound: true }, got.notify || {});
 }
 
+/* Off by default — reading a live Slack tab is new and unverified against
+   Slack's actual page structure, unlike everything else here, so it's
+   opt-in rather than silently on. */
+async function getSlackWatch() {
+  const got = await chrome.storage.sync.get({ slackWatch: null });
+  return Object.assign({ on: false }, got.slackWatch || {});
+}
+
+async function setSlackWatch(patch) {
+  const cur = await getSlackWatch();
+  await chrome.storage.sync.set({ slackWatch: Object.assign(cur, patch || {}) });
+}
+
 async function autoCheckEnabled() {
   const got = await chrome.storage.sync.get({ autoCheck: true });
   return got.autoCheck !== false;
@@ -709,6 +722,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (fu.admin === 'peleazar') await QA.setFollowup({ admin: 'pauleleazar1' });
 
   chrome.alarms.create('trello', { periodInMinutes: 1 });
+  chrome.alarms.create('slack', { periodInMinutes: 2 });
   scheduleFollowup();
   scheduleDailyUpdate();
   await checkTrello('installed');
@@ -716,6 +730,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onStartup.addListener(async () => {
   chrome.alarms.create('trello', { periodInMinutes: 1 });
+  chrome.alarms.create('slack', { periodInMinutes: 2 });
   scheduleFollowup();
   scheduleDailyUpdate();
   await checkTrello('startup');
@@ -730,6 +745,10 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'dailyUpdate') {
     const draft = await prepareDailyUpdate('scheduled');
     await notifyDailyUpdate(draft);
+  }
+  if (a.name === 'slack') {
+    const cfg = await getSlackWatch();
+    if (cfg.on) await QA.checkSlack();
   }
 });
 

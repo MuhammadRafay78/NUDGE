@@ -3090,15 +3090,18 @@ var QA = (function () {
     { id: 'done', label: 'Done' }
   ];
 
-  /* Three boards sharing the same four columns above — a card lives on
+  /* Four boards sharing the same four columns above — a card lives on
      exactly one. "Main" is everything else: one-off client asks, replies,
      deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself. "Tax
      Plan Draft" is a fixed rule, not an AI guess — see
-     keywordBoardOverride. */
+     keywordBoardOverride. "Slack" is anything checkSlack below files —
+     never AI-routed onto another board, since it's already a distinct
+     source. */
   const BOARDS = [
     { id: 'main', label: 'Main' },
     { id: 'qtm', label: 'QTM' },
-    { id: 'taxplan', label: 'Tax Plan Draft' }
+    { id: 'taxplan', label: 'Tax Plan Draft' },
+    { id: 'slack', label: 'Slack' }
   ];
 
   /* A couple of routing calls are exact rules, not judgment calls — cheaper
@@ -3287,6 +3290,157 @@ var QA = (function () {
       const mine = cards.filter((c) => c.cardId === cardId && c.column !== 'done');
       await Promise.all(mine.map((c) => moveCard(c.id, 'done').catch(() => {})));
     } catch (e) { /* no board configured, or unreachable — nothing to sync */ }
+  }
+
+  /* ================= Slack, read-only =================
+     Unlike Trello, there is no API token here — this rides an already-open,
+     already-logged-in Slack tab the same way everything else rides an
+     already-open Trello tab, just reading the page rather than calling an
+     API. It never opens a tab itself and never clicks or sends anything.
+
+     Slack's own class names are private, unverified from here, and liable
+     to have moved by the time this runs — so, same discipline as
+     gmail-watch.js: every selector attempt is wrapped so one going stale
+     can't break the read, and the fallback is always the pane's plain
+     visible text, which an AI can still work from even when every selector
+     below is wrong. */
+
+  /* Injected into the Slack tab, so it must reference nothing outside
+     itself. Channel ids in Slack's own URLs say what kind of conversation
+     this is: D = a DM, G = a group DM, C = a channel — public or private
+     read the same way once you're a member, so no separate handling needed
+     for private specifically. */
+  function readSlackTab() {
+    try {
+      const main =
+        document.querySelector('[data-qa="message_pane"]') ||
+        document.querySelector('[data-qa="slack_kit_list"]') ||
+        document.querySelector('[role="main"]') ||
+        document.body;
+      const text = String((main && (main.innerText || main.textContent)) || '')
+        .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      const path = location.pathname || '';
+      const m = /\/messages\/([A-Za-z0-9]+)/.exec(path) || /\/client\/[^/]+\/([A-Za-z0-9]+)/.exec(path);
+      const chanId = m ? m[1] : '';
+      return {
+        ok: true, url: location.href, title: document.title,
+        isDM: /^[DG]/.test(chanId), pageText: text
+      };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  }
+
+  const SLACK_TASK_SYSTEM = [
+    'You read a chunk of text that just appeared in a Slack conversation and pull out anything that is a real, concrete ask directed at [NAMES] — not general chat, an FYI, a reaction, small talk, or someone else\'s task.',
+    'You are told whether this is a direct message (a 1:1 or small group DM) or a channel. In a DM, treat anything the other person is asking for as directed at the reader even if [NAMES] is never said outright, since a DM is inherently one-to-one. In a channel, only count something that specifically names or clearly addresses [NAMES] — a plain question to the room, or a task clearly meant for someone else, does not count.',
+    'For each real ask you find, answer with exactly one line: {"who": "<their best-guess name, or empty if unclear>", "ask": "<a short, concrete paraphrase of what they want, under 20 words, in your own words>"}',
+    'One JSON object per line, nothing else on that line. If you find nothing that qualifies, answer with nothing at all.',
+    'Never invent a name or a task that is not actually there.'
+  ].join('\n');
+
+  /* Runs once per Slack tab per poll, only on the text that's newly
+     appeared since last time (see checkSlack) — never re-reads the same
+     conversation twice. Off/no key/any trouble at all returns no tasks
+     rather than guessing; a failed read must never surface a false task. */
+  async function extractSlackTasks(chunk, isDM, myNames) {
+    const cfg = await getTriage();
+    if (!cfg.enabled || !cfg.apiKey || !chunk) return [];
+    const names = (myNames && myNames.length ? myNames : ME).join(', ');
+    const system = SLACK_TASK_SYSTEM.replace(/\[NAMES\]/g, names);
+    try {
+      const res = await fetchGeminiRetry(
+        'https://generativelanguage.googleapis.com/v1beta/models/' +
+        encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: system }] },
+            contents: [{ role: 'user', parts: [{ text: 'IS_DM: ' + (isDM ? 'true' : 'false') + '\n\n' + chunk.slice(0, 4000) }] }],
+            generationConfig: { temperature: 0, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } }
+          })
+        }
+      );
+      if (!res.ok) return [];
+      const body = await res.json();
+      const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
+      const said = parts.map(function (p) { return p.text || ''; }).join('');
+      const out = [];
+      said.split('\n').forEach(function (line) {
+        line = line.trim();
+        if (!line) return;
+        try {
+          const obj = JSON.parse(line);
+          if (obj && obj.ask) out.push({ who: String(obj.who || '').slice(0, 80), ask: String(obj.ask).slice(0, 300) });
+        } catch (e) { /* not a JSON line — skip it rather than guess */ }
+      });
+      return out;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /* Polled on its own alarm (background.js), off by default — see
+     getSlackWatch there. Only ever looks at tabs already open; opening one
+     itself would be a much bigger surprise here than it is for a Trello
+     reply, since this reads content rather than acting on a click. */
+  async function checkSlack() {
+    let tabs;
+    try {
+      tabs = await chrome.tabs.query({ url: ['*://app.slack.com/*', '*://*.slack.com/*'] });
+    } catch (e) {
+      return;
+    }
+    if (!tabs || !tabs.length) return;
+
+    const seenKey = 'slackSeen';
+    const filedKey = 'slackFiled';
+    const store = await chrome.storage.local.get({ [seenKey]: {}, [filedKey]: [] });
+    const seen = store[seenKey] || {};
+    const filed = store[filedKey] || [];
+    const filedSet = new Set(filed);
+    const rules = await getRules();
+    const mentionRule = (rules || []).filter(function (r) { return r.id === 'r_tagged_me'; })[0];
+    const myNames = (mentionRule && mentionRule.names && mentionRule.names.length) ? mentionRule.names : ME;
+
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      let got;
+      try {
+        got = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: readSlackTab });
+      } catch (e) {
+        continue;
+      }
+      const read = got && got[0] && got[0].result;
+      if (!read || !read.ok) continue;
+
+      const key = urlKey(read.url);
+      const lastLen = seen[key] || 0;
+      seen[key] = read.pageText.length;
+      /* first time this tab/URL is ever seen: record the baseline only —
+         everything already on screen is history, not "new" */
+      if (!lastLen || read.pageText.length <= lastLen) continue;
+
+      const chunk = read.pageText.slice(Math.max(0, lastLen - 200));
+      const tasks = await extractSlackTasks(chunk, read.isDM, myNames);
+      const channelName = (read.title || '').replace(/\s*[|—-]\s*Slack\s*$/i, '').trim();
+
+      for (const t of tasks) {
+        const dk = hash(key + '|' + normalize(t.ask).toLowerCase());
+        if (filedSet.has(dk)) continue;
+        filedSet.add(dk);
+        await fileCard({
+          title: (t.who || 'Someone') + ' messaged you on Slack',
+          body: t.ask, context: channelName, url: read.url, board: 'slack'
+        });
+      }
+    }
+
+    seen && await chrome.storage.local.set({
+      [seenKey]: seen,
+      [filedKey]: Array.from(filedSet).slice(-200)   // bounded — this is dedup, not a log
+    });
   }
 
   /* Build the grounding context. Trello's structured notifications first, since
@@ -4578,7 +4732,7 @@ var QA = (function () {
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
-    markCardHandled, syncBoardAfterReply,
+    markCardHandled, syncBoardAfterReply, checkSlack,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,
