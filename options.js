@@ -277,6 +277,34 @@ if (slOn) {
     slState.textContent = slOn.checked ? ' On — checked every couple of minutes while a Slack tab is open.' : '';
     flash('Saved.');
   });
+
+  const slTest = document.getElementById('slackTest');
+  const slResult = document.getElementById('slackTestResult');
+  if (slTest && slResult) {
+    slTest.addEventListener('click', async () => {
+      slResult.textContent = 'Checking your open Slack tab(s)…';
+      const res = await QA.testSlackNow();
+      if (!res.ok) { slResult.textContent = res.why; return; }
+      slResult.textContent = res.tabs.map((t) => {
+        if (!t.ok) return t.url + '\n  Could not read this tab: ' + t.why;
+        const lines = [
+          t.url,
+          '  Title: ' + (t.title || '(none)') + (t.isDM ? '  [detected as a DM]' : '  [detected as a channel]'),
+          '  Read ' + t.textLen + ' characters of visible text.',
+          '  Last 200 chars seen: ' + JSON.stringify(t.sample)
+        ];
+        if (!t.hasKey) {
+          lines.push('  No Google AI Studio key set under "Sort mentions" above — extraction was skipped.');
+        } else if (t.tasks.length) {
+          lines.push('  Extracted ' + t.tasks.length + ' task(s):');
+          t.tasks.forEach((task) => lines.push('    - ' + (task.who || '(unknown)') + ': ' + task.ask));
+        } else {
+          lines.push('  Extracted 0 tasks from the end of what\'s currently on screen.');
+        }
+        return lines.join('\n');
+      }).join('\n\n');
+    });
+  }
 }
 
 /* ---------- desktop notifications ---------- */
