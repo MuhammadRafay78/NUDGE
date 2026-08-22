@@ -3447,6 +3447,53 @@ var QA = (function () {
     });
   }
 
+  /* Manual, read-only diagnostic for the Settings page's "Test Slack now"
+     button — reports what checkSlack() would see, without touching the
+     seen/filed storage or filing anything. Unlike checkSlack, it runs
+     extraction against the tail of whatever is on screen right now rather
+     than only newly-appeared text, so it gives a real signal on the very
+     first try instead of requiring a fresh incoming message first. */
+  async function testSlackNow() {
+    let tabs;
+    try {
+      tabs = await chrome.tabs.query({ url: ['*://app.slack.com/*', '*://*.slack.com/*'] });
+    } catch (e) {
+      return { ok: false, why: 'Could not list browser tabs: ' + String((e && e.message) || e) };
+    }
+    if (!tabs || !tabs.length) return { ok: false, why: 'No open Slack tab found (looked for app.slack.com / *.slack.com).' };
+
+    const rules = await getRules();
+    const mentionRule = (rules || []).filter(function (r) { return r.id === 'r_tagged_me'; })[0];
+    const myNames = (mentionRule && mentionRule.names && mentionRule.names.length) ? mentionRule.names : ME;
+    const cfg = await getTriage();
+
+    const perTab = [];
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      let got;
+      try {
+        got = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: readSlackTab });
+      } catch (e) {
+        perTab.push({ url: tab.url || '', ok: false, why: 'Could not read the page: ' + String((e && e.message) || e) });
+        continue;
+      }
+      const read = got && got[0] && got[0].result;
+      if (!read || !read.ok) {
+        perTab.push({ url: tab.url || '', ok: false, why: (read && read.error) || 'Page read returned nothing.' });
+        continue;
+      }
+
+      const chunk = read.pageText.slice(-3000);
+      const tasks = cfg.apiKey ? await extractSlackTasks(chunk, read.isDM, myNames) : [];
+      perTab.push({
+        url: read.url, ok: true, title: read.title, isDM: read.isDM,
+        textLen: read.pageText.length, sample: read.pageText.slice(-200),
+        hasKey: !!cfg.apiKey, tasks: tasks
+      });
+    }
+    return { ok: true, tabs: perTab };
+  }
+
   /* Build the grounding context. Trello's structured notifications first, since
      that's the good data, then whatever the saved questions matched, then page text. */
   function buildContext(state) {
@@ -4736,7 +4783,7 @@ var QA = (function () {
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
-    markCardHandled, syncBoardAfterReply, checkSlack,
+    markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,
