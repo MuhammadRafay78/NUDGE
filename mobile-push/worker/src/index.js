@@ -176,11 +176,14 @@ export default {
          {column} alone */
       if (payload.column !== undefined) card.column = payload.column;
       if (payload.board !== undefined) card.board = payload.board;
+      if (payload.title !== undefined) card.title = String(payload.title).slice(0, 200) || 'Untitled';
+      if (payload.body !== undefined) card.body = String(payload.body).slice(0, 4000);
       if (payload.context !== undefined) card.context = String(payload.context).slice(0, 200);
       if (payload.due !== undefined) card.due = String(payload.due).slice(0, 40);
       if (payload.dueAt !== undefined) card.dueAt = String(payload.dueAt).slice(0, 40);
       if (payload.dueComplete !== undefined) card.dueComplete = !!payload.dueComplete;
       if (payload.cardId !== undefined) card.cardId = String(payload.cardId).slice(0, 60);
+      if (payload.notifId !== undefined) card.notifId = String(payload.notifId).slice(0, 60);
       if (payload.actorUser !== undefined) card.actorUser = String(payload.actorUser).slice(0, 60);
       card.updatedAt = Date.now();
       await saveBoard(env, code, cards);
