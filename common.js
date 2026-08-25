@@ -3223,6 +3223,34 @@ var QA = (function () {
         f.board = keywordBoardOverride(f) || (await classifyCardBoard(f)).board;
       }
       if (f.board === 'qtm' && qtmIsActionItems(f)) f.column = 'action';
+
+      /* A fresh tag on a card that already has a board card — most often one
+         sitting in Done because it was dealt with before — used to always
+         create a second, separate card rather than surface the existing one
+         again, so a re-tag on already-finished work never visibly came back
+         to Inbox. Reuse the existing card instead: if it was Done, that's a
+         genuine reopen (new ask, back in the queue); if it's still active
+         (inbox/doing/action) leave its column alone rather than yanking it
+         out of Doing, but still refresh the text and notifId so marking it
+         handled later points at this newest mention, not a stale one. */
+      if (f.cardId) {
+        const existing = (await fetchCards().catch(() => []))
+          .find((c) => c.cardId === f.cardId);
+        if (existing) {
+          const patch = {
+            title: f.title || existing.title, body: f.body || existing.body,
+            context: f.context || existing.context,
+            due: f.due || existing.due, dueAt: f.dueAt || existing.dueAt,
+            dueComplete: f.dueComplete !== undefined ? f.dueComplete : existing.dueComplete,
+            notifId: f.notifId || existing.notifId,
+            actorUser: f.actorUser || existing.actorUser
+          };
+          if (existing.column === 'done') patch.column = f.column;
+          await updateCard(existing.id, patch);
+          return { ok: true, reopened: true };
+        }
+      }
+
       await createCard(f);
       return { ok: true };
     } catch (e) {
