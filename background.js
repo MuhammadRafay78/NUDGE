@@ -630,7 +630,7 @@ async function notifyFollowup(draft) {
    there. Nothing is sent anywhere on its own — same as the weekly
    follow-up, this only ever fills a draft and notifies. */
 
-async function prepareDailyUpdate(reason) {
+async function prepareDailyUpdate(reason, image) {
   const cfg = await QA.getDailyUpdate();
   let cards;
   try {
@@ -645,8 +645,8 @@ async function prepareDailyUpdate(reason) {
   }
   let draft;
   try {
-    const res = await QA.draftDailyUpdate(cards, cfg.recipient);
-    draft = { at: Date.now(), reason: reason, text: res.text };
+    const res = await QA.draftDailyUpdate(cards, cfg.recipient, image);
+    draft = { at: Date.now(), reason: reason, text: res.text, usedImage: !!(image && image.data) };
   } catch (e) {
     draft = { at: Date.now(), reason: reason, text: '', problem: (e && e.message) || 'Could not draft the update.' };
   }
@@ -817,7 +817,7 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   }
   if (msg.type === 'rescheduleFollowup') { scheduleFollowup(); }
   if (msg.type === 'prepareDailyUpdate') {
-    prepareDailyUpdate('asked').then((d) => respond && respond(d));
+    prepareDailyUpdate('asked', msg.image).then((d) => respond && respond(d));
     return true;
   }
   if (msg.type === 'rescheduleDailyUpdate') { scheduleDailyUpdate(); }

@@ -18,6 +18,9 @@ const updateRecipient = document.getElementById('updateRecipient');
 const updateRegen = document.getElementById('updateRegen');
 const updateCopy = document.getElementById('updateCopy');
 const updateClose = document.getElementById('updateClose');
+const updateImageInput = document.getElementById('updateImageInput');
+const updateImageBtn = document.getElementById('updateImageBtn');
+const updateImageState = document.getElementById('updateImageState');
 const updateAuto = document.getElementById('updateAuto');
 const updateAutoTime = document.getElementById('updateAutoTime');
 
@@ -994,7 +997,9 @@ updateAutoTime.addEventListener('change', () => {
 
 function showDailyUpdate(draft) {
   if (draft && draft.text) updateText.value = draft.text;
-  updateWhen.textContent = draft && draft.at ? 'Generated ' + QA.ago(draft.at) : '';
+  updateWhen.textContent = draft && draft.at
+    ? 'Generated ' + QA.ago(draft.at) + (draft.usedImage ? ' — using the attached image' : '')
+    : '';
   if (draft && draft.problem) {
     updateStatus.className = 'meta bad';
     updateStatus.textContent = draft.problem;
@@ -1004,13 +1009,63 @@ function showDailyUpdate(draft) {
   }
 }
 
+/* Kept in memory only — a screenshot is picked right before generating
+   (or regenerating) and stays attached until cleared or replaced, so
+   "Regenerate" reuses it without asking again. Never written to storage:
+   it's meant for one board session, not to linger as extension state. */
+let updateImage = null;   // { mimeType, data (base64, no data: prefix), name } — the daily-update screenshot, distinct from the reply composer's attachedImage above
+const MAX_UPDATE_IMAGE_BYTES = 4 * 1024 * 1024;
+
+function paintUpdateImageState() {
+  if (!updateImage) { updateImageState.textContent = ''; return; }
+  updateImageState.innerHTML = '';
+  const label = document.createElement('span');
+  label.textContent = updateImage.name + ' attached';
+  const clear = document.createElement('button');
+  clear.textContent = '✕';
+  clear.title = 'Remove the attached image';
+  clear.className = 'search-clear';
+  clear.style.marginLeft = '4px';
+  clear.addEventListener('click', () => {
+    updateImage = null;
+    updateImageInput.value = '';
+    paintUpdateImageState();
+  });
+  updateImageState.appendChild(label);
+  updateImageState.appendChild(clear);
+}
+
+updateImageBtn.addEventListener('click', () => updateImageInput.click());
+updateImageInput.addEventListener('change', () => {
+  const file = updateImageInput.files && updateImageInput.files[0];
+  if (!file) return;
+  if (file.size > MAX_UPDATE_IMAGE_BYTES) {
+    updateImageState.textContent = 'That image is too large — try one under 4MB.';
+    updateImageInput.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = String(reader.result || '');
+    const comma = dataUrl.indexOf(',');
+    updateImage = {
+      mimeType: file.type || 'image/png',
+      data: comma === -1 ? '' : dataUrl.slice(comma + 1),
+      name: file.name || 'screenshot'
+    };
+    paintUpdateImageState();
+  };
+  reader.onerror = () => { updateImageState.textContent = 'Could not read that image.'; };
+  reader.readAsDataURL(file);
+});
+
 function generateDailyUpdate() {
   dailyUpdateBtn.disabled = true;
   updateRegen.disabled = true;
   updatePanel.hidden = false;
   updateStatus.className = 'meta';
   updateStatus.textContent = 'Writing…';
-  tell({ type: 'prepareDailyUpdate' }, (draft) => {
+  tell({ type: 'prepareDailyUpdate', image: updateImage }, (draft) => {
     dailyUpdateBtn.disabled = false;
     updateRegen.disabled = false;
     if (!draft) {

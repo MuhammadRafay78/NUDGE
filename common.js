@@ -3676,7 +3676,8 @@ var QA = (function () {
     'Skip any card whose NOTE is about a forecast/forecasting deliverable entirely — that work is Dwight\'s, not his, so it never belongs on his own status update even if it is overdue.',
     'If a card\'s NOTE mentions a discovery call prep note, that always means prepping the initial tax plan draft — describe it that way (e.g. "prep the initial tax plan draft from the discovery call notes") instead of paraphrasing what the NOTE literally says. Fold in master data too when the NOTE mentions that as well (e.g. "prep the initial tax plan draft and update master data").',
     'Never invent a client name, QTM code, due date, or task detail that is not in the data given. If there is nothing to report, say so plainly in one line.',
-    'No markdown headers. One item per line, dash-prefixed. Plain text, the way a person would actually type a quick message.'
+    'No markdown headers. One item per line, dash-prefixed. Plain text, the way a person would actually type a quick message.',
+    'You may also be given an image — usually a screenshot of his weekly meeting schedule showing which QTM clients he is meeting with on which days. If an image is given, use it only to name which QTM(s) he is meeting today and which he is preparing for next (tomorrow, or a later day this week), and fold that into the lead-in sentence — e.g. "Updating today\'s Dane Nakama QTM, prepping for the Acme Corp QTM tomorrow." Read the image carefully for client/QTM names and dates; if any of it is unclear, cut off, or not actually meeting information, leave it out rather than guessing. The image is context for phrasing only — it never overrides or contradicts what the board data says is due or in progress.'
   ].join('\n');
 
   function buildDailyUpdateContext(cards) {
@@ -3699,8 +3700,11 @@ var QA = (function () {
   }
 
   /* Gemini, not Claude — reuses the same key as "Sort mentions into Needs
-     me / Waiting / FYI" (getTriage), rather than asking for a second key. */
-  async function draftDailyUpdate(cards, recipient) {
+     me / Waiting / FYI" (getTriage), rather than asking for a second key.
+     image, if given: { mimeType, data } — data is base64, no "data:" prefix
+     (board.js strips it after FileReader.readAsDataURL). Optional; the
+     scheduled/unattended path never has one to give. */
+  async function draftDailyUpdate(cards, recipient, image) {
     const cfg = await getTriage();
     if (!cfg.apiKey) {
       const e = new Error('No Gemini key yet. Open Settings → Sort mentions and paste your Google AI Studio key.');
@@ -3715,6 +3719,11 @@ var QA = (function () {
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
       encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent';
 
+    const reqParts = [{ text: ask + '\n\nBOARD SNAPSHOT:\n' + context }];
+    if (image && image.data && image.mimeType) {
+      reqParts.push({ inline_data: { mime_type: image.mimeType, data: image.data } });
+    }
+
     let res;
     try {
       res = await fetchGeminiRetry(url, {
@@ -3722,7 +3731,7 @@ var QA = (function () {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: DAILY_UPDATE_SYSTEM }] },
-          contents: [{ role: 'user', parts: [{ text: ask + '\n\nBOARD SNAPSHOT:\n' + context }] }],
+          contents: [{ role: 'user', parts: reqParts }],
           /* Flash's default "thinking" tokens count against maxOutputTokens —
              at 400 the model could burn the whole budget reasoning and never
              get around to writing the update, so it came back half-written
