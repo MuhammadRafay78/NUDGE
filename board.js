@@ -144,21 +144,52 @@ function defaultReplyUser(card) {
 }
 
 /* A dense Trello note — often "**Header:** - item - item **Header:** - item"
-   run together with no real line breaks — read fine in Trello's own comment
-   box (which wraps around the markup as you type) but turns into one
-   unreadable wall of text once it is just plain-escaped here. This makes
-   "**bold**" real bold, splits it onto separate lines by section, and then
-   tells the three shapes that turn up apart so each gets its own look:
-   a bold line ending in ":" is a section header (its own color, spaced
-   above); any other bold-only line or a " - " item is a bullet under it;
-   everything else stays a plain line. Ordinary text with no markdown in it
-   — "Got it, thanks", "@nestor thanks" — passes through as a single plain
-   line, unchanged. */
+   run together with no real line breaks, or several sentences typed as one
+   run-on paragraph with no breaks at all — reads fine in Trello's own
+   comment box (which wraps around the markup as you type) but turns into
+   one unreadable wall of text once it is just plain-escaped here. This
+   makes "**bold**" real bold, drops literal "_..._" markers rather than
+   showing them raw, fixes a missing space after a sentence-ending period
+   ("...on Canopy.We also...") without prying open a tight abbreviation
+   like "U.S.", and splits the result onto separate lines — by markdown
+   section, by " - " bullet, and by plain sentence — then tells the shapes
+   that turn up apart so each gets its own look: a bold line ending in ":"
+   is a section header (its own color, spaced above); any other bold-only
+   line or a " - " item is a bullet under it; everything else stays a
+   plain line. Ordinary text with no markdown in it — "Got it, thanks",
+   "@nestor thanks" — passes through as a single plain line, unchanged. */
 function formatCommentHtml(text) {
   let t = esc(QA.tidyCommentText(text));
+  /* A missing space after a sentence-ending period ("...on Canopy.We also
+     have...") is a common hand-typing slip and otherwise blocks the
+     sentence-split below from ever seeing a boundary there — add it back
+     before anything else runs. Only fires before a capital letter, so a
+     decimal like "3.5" is untouched; skipped right after a single capital
+     letter so a tight abbreviation like "U.S." isn't pried open into
+     "U. S." — a title like "Mr.Smith" still gets its space back, since a
+     missing one there is a typo, not a convention. */
+  t = t.replace(/(?<!\b[A-Z])\.(?=[A-Z])/g, '. ');
+  /* Trello's own comment box treats an underscore-wrapped word or phrase as
+     italic, but that pairing is unreliable to recover once a sentence
+     inside the span gets split onto its own line below — a whole
+     multi-sentence paragraph wrapped in underscores, as one real Trello
+     comment did, would otherwise leave an opening or closing <i> stranded
+     in a different <div> than its match. So this doesn't try to render
+     italics — it just drops the delimiter-shaped underscore rather than
+     showing it as literal clutter. A mid-word underscore like
+     "@some_user" (word characters on both sides) is left alone. */
+  t = t.replace(/(?<!\w)_|_(?!\w)/g, '');
   t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   t = t.replace(/(.)(<b>)/g, '$1\n$2');
   t = t.replace(/ - (?=\S)/g, '\n- ');
+  /* Plain prose with no markdown at all still reads as one wall of text if
+     several sentences are run together with no paragraph breaks — split
+     those onto their own line too, same as the bold-header/bullet cases
+     above already are. Skipped right after a title or initial ("Mr.",
+     "U.S.") so "Reach out to Mr. Smith" doesn't get cut in half — a
+     period is only a sentence end here if the word right before it isn't
+     one of those. */
+  t = t.replace(/(?<!\b(?:Mr|Mrs|Ms|Dr|Jr|Sr|vs|etc|e\.g|i\.e|[A-Z]))([.!?])\s+(?=[A-Z<])/g, '$1\n');
   const lines = t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean);
 
   return lines.map((line) => {
@@ -174,11 +205,15 @@ function formatCommentHtml(text) {
 }
 
 function itemHtml(card, terms) {
-  /* A separate, clearly-labelled escape hatch to the real Trello page — kept
+  /* A separate, clearly-labelled escape hatch to the source page — kept
      small and secondary, since "Open card" opens the comment thread right
-     here instead of sending you to trello.com. */
+     here instead of sending you off-page. A Slack-filed card has no cardId
+     (there's no Trello comment thread to show), so this link — pointing at
+     the Slack conversation instead — is the card's only way to open at all;
+     labeled by source rather than hardcoded "Trello" so that's not a lie. */
+  const linkSource = cardBoard(card) === 'slack' ? 'Slack' : 'Trello';
   const trelloLink = card.url
-    ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open the real card on trello.com">Trello &#8599;</a>'
+    ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open on ' + linkSource + '">' + linkSource + ' &#8599;</a>'
     : '';
   const body = card.body || '';
   const long = body.length > LONG_BODY;
@@ -621,13 +656,20 @@ boardEl.addEventListener('click', async (e) => {
   }
 
   /* Clicking the card itself — its title, context, due chip, body text, the
-     drag handle, blank padding — opens it, same as the "Open card" button. */
+     drag handle, blank padding — opens it, same as the "Open card" button.
+     A card with no cardId (Slack-filed cards have none — there's no Trello
+     comment thread to show) has nothing to open in a modal, but it does
+     have a source link; clicking anywhere on a card like that used to do
+     nothing at all unless you found the small "Trello ↗" text, so send it
+     to the same place that link goes instead of leaving the click dead. */
   if (e.target.closest('select')) return;   // opening/choosing from the move dropdown, not the card
+  if (e.target.closest('a.open')) return;   // already navigates on its own — don't also act on the bubbled click
   const item = e.target.closest('.item');
   const card = item && cardsById[item.dataset.id];
-  if (!card || !card.cardId) return;
+  if (!card) return;
   if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
-  openModal(item.dataset.id, false);
+  if (card.cardId) { openModal(item.dataset.id, false); return; }
+  if (card.url) window.open(card.url, '_blank', 'noopener');
 });
 
 boardEl.addEventListener('keydown', async (e) => {
