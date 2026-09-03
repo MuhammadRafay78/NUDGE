@@ -212,7 +212,13 @@ function itemHtml(card) {
         '<select class="move">' + options + '</select>' +
       '</div>' +
       '<div class="meta">' +
-        '<span class="when">' + ago(card.updatedAt || card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed — not when it was last
+           touched. The server bumps updatedAt on any PATCH at all,
+           including a plain column/board move, so this badge picking up
+           that field instead made a 17-day-overdue card read as "1m ago"
+           the moment it got dragged or bulk-recategorized — nothing
+           actually happened to the card itself. */
+        '<span class="when">' + ago(card.createdAt) + '</span>' +
         openLink +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +

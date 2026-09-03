@@ -306,7 +306,14 @@ function itemHtml(card, terms) {
         '<select class="move" title="Move to…">' + moveOptions + '</select>' +
       '</div>' +
       '<div class="row2">' +
-        '<span class="when">' + QA.ago(card.updatedAt || card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed — not when it was last
+           touched. The server bumps updatedAt on any PATCH at all,
+           including a plain column/board move (a drag, or Recategorize
+           fixing dozens of cards in one pass), so that field reading as
+           "1m ago" on a card that's actually 17 days overdue was just
+           this badge picking up the wrong timestamp, not anything real
+           happening to the card. */
+        '<span class="when">' + QA.ago(card.createdAt) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'
