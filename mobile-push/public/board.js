@@ -55,6 +55,14 @@ function dueText(card) {
   return card.due || '';
 }
 
+/* Soonest due (including overdue, which sorts earliest of all) first, a
+   card with no dueAt last — Array#sort is stable, so cards that tie (all
+   undated, most often) keep whatever order they already had rather than
+   getting shuffled. Only dueAt is trusted here, same as dueText() above. */
+function dueSortValue(card) {
+  return card.dueAt ? new Date(card.dueAt).getTime() : Infinity;
+}
+
 /* A phone gets its code from the full install/pairing flow in app.js — a
    laptop or any other browser just needs a link with the code already in
    it (see "Copy board link" in the extension's Settings), so this page
@@ -278,7 +286,7 @@ function render(cards) {
 
   boardEl.innerHTML = COLUMNS.map((col) => {
     const total = onBoard.filter((c) => c.column === col.id);
-    const items = visible.filter((c) => c.column === col.id);
+    const items = visible.filter((c) => c.column === col.id).sort((a, b) => dueSortValue(a) - dueSortValue(b));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +

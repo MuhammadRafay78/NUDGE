@@ -87,6 +87,17 @@ function dueText(card) {
   return card.due || '';
 }
 
+/* Soonest due (including overdue, which sorts earliest of all) first, a
+   card with no dueAt last — Array#sort is stable, so cards that tie (all
+   undated, most often) keep whatever order they already had rather than
+   getting shuffled. Only dueAt is trusted here, same as dueText() above:
+   an old card with just a frozen .due label but no raw timestamp has
+   nothing reliably sortable, so it's treated as undated rather than
+   guessed at. */
+function dueSortValue(card) {
+  return card.dueAt ? new Date(card.dueAt).getTime() : Infinity;
+}
+
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
 if (!QA.BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 
@@ -458,7 +469,7 @@ function render(cards) {
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
     const total = onBoard.filter((c) => c.column === col.id);
-    const items = visible.filter((c) => c.column === col.id);
+    const items = visible.filter((c) => c.column === col.id).sort((a, b) => dueSortValue(a) - dueSortValue(b));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
