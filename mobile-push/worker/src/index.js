@@ -7,6 +7,24 @@ const CODE_LENGTH = 8;
 const COLUMNS = ['inbox', 'doing', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const boardKey = (code) => 'board:' + code;
+const MAX_COMMENTS = 300;
+
+/* The extension already holds a live, logged-in Trello session — the
+   Worker never has one of its own — so rather than making every viewer of
+   the shareable board depend on a separate TRELLO_API_KEY/TOKEN, the
+   extension pushes a card's full comment thread here itself whenever it
+   fetches one for its own "Open card" panel (see loadHistory in board.js).
+   Capped the same way the rest of a card's fields already are, so one
+   very chatty card can't blow out KV storage or the response payload. */
+function sanitizeComments(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.slice(0, MAX_COMMENTS).map((c) => ({
+    at: Number((c && c.at) || 0) || 0,
+    by: String((c && c.by) || '').slice(0, 60),
+    byName: String((c && c.byName) || '').slice(0, 120),
+    text: String((c && c.text) || '').slice(0, 4000)
+  }));
+}
 
 function newCode() {
   const bytes = new Uint8Array(CODE_LENGTH);
@@ -224,6 +242,10 @@ export default {
       if (payload.cardId !== undefined) card.cardId = String(payload.cardId).slice(0, 60);
       if (payload.notifId !== undefined) card.notifId = String(payload.notifId).slice(0, 60);
       if (payload.actorUser !== undefined) card.actorUser = String(payload.actorUser).slice(0, 60);
+      if (payload.comments !== undefined) {
+        const c = sanitizeComments(payload.comments);
+        if (c) { card.comments = c; card.commentsAt = Date.now(); }
+      }
       card.updatedAt = Date.now();
       await saveBoard(env, code, cards);
       return json({ ok: true, card: card });

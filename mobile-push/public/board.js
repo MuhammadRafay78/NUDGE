@@ -338,28 +338,44 @@ let modalCardId = null;
 let cardsById = {};
 let lastCards = [];    // re-filtered on every search keystroke, no refetch needed
 let searchQuery = '';
-const historyCache = {};   // card id -> { loading } | { ok:true, desc, checklist, comments } | { ok:false, error }
+const historyCache = {};   // card id -> { loading } | { ok:true, comments } | { ok:false, error }
 
+/* This page has no Trello session of its own, but a card the extension has
+   already opened once carries its own comment thread already — the
+   extension pushed it here the moment it fetched one for its own "Open
+   card" panel (see loadHistory in the extension's board.js), so most of
+   the time there's nothing to fetch at all. That only ever happens for a
+   card someone opened in the extension first, though, so this still tries
+   a live Trello fetch too — via the server's own TRELLO_API_KEY/TOKEN, if
+   one's configured — as a background refresh, never replacing an
+   already-synced thread with an error if that refresh comes up empty. */
 function openModal(id) {
   const card = cardsById[id];
   if (!card) return;
   modalCardId = id;
-  if (card.cardId) {
+  const synced = Array.isArray(card.comments);
+  if (synced) {
+    historyCache[id] = { ok: true, comments: card.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+  } else if (card.cardId) {
     delete historyCache[id];   // always fetch fresh on open, so a card just updated in Trello shows that
     historyCache[id] = { loading: true };
   }
   modalBoxEl.innerHTML = modalHtml(card);
   modalEl.hidden = false;
-  if (card.cardId) loadHistory(id);
+  if (card.cardId) loadHistory(id, synced);
 }
 
-async function loadHistory(id) {
+async function loadHistory(id, silent) {
   const card = cardsById[id];
   if (!card || !card.cardId) return;
   try {
     const res = await fetchTrelloCard(card.cardId);
     historyCache[id] = { ok: true, comments: res.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
   } catch (e) {
+    /* Already showing the extension-synced thread — a failed background
+       refresh (most often: this server has no TRELLO_API_KEY/TOKEN set up)
+       is expected, not a reason to blank that out with an error. */
+    if (silent && historyCache[id] && historyCache[id].ok) return;
     historyCache[id] = { ok: false, error: (e && e.message) || 'Could not reach the board server.' };
   }
   if (modalCardId === id) modalBoxEl.innerHTML = modalHtml(card);

@@ -10,6 +10,24 @@ const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
 const COLUMNS = ['inbox', 'doing', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
+const MAX_COMMENTS = 300;
+
+/* The extension already holds a live, logged-in Trello session — the
+   server never has one of its own — so rather than making every viewer of
+   the shareable board depend on a separate TRELLO_API_KEY/TOKEN, the
+   extension pushes a card's full comment thread here itself whenever it
+   fetches one for its own "Open card" panel (see loadHistory in board.js).
+   Capped the same way the rest of a card's fields already are, so one
+   very chatty card can't blow out storage or the response payload. */
+function sanitizeComments(raw) {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.slice(0, MAX_COMMENTS).map((c) => ({
+    at: Number((c && c.at) || 0) || 0,
+    by: String((c && c.by) || '').slice(0, 60),
+    byName: String((c && c.byName) || '').slice(0, 120),
+    text: String((c && c.text) || '').slice(0, 4000)
+  }));
+}
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -25,13 +43,16 @@ if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
   process.exit(1);
 }
 
-/* Optional — the board page has no Trello session of its own (it isn't the
-   extension, so it can't read trello.com's cookies), so a card opened here
-   only ever shows the one snippet stored on it unless this server holds a
-   Trello API key + a READ-ONLY token to fetch the rest itself. Off by
-   default: unset, /api/trello-card just says so and the board falls back
-   to the stored snippet, same as before this existed. See README for how
-   to generate a read-only token. */
+/* Optional, second path — the extension already syncs a card's comment
+   thread here itself the moment it fetches one for its own board (see the
+   PATCH handler's `comments` field below), so most cards need nothing
+   more. This is only for a card nobody's opened in the extension yet: the
+   board page has no Trello session of its own (it isn't the extension, so
+   it can't read trello.com's cookies), so without either of these it only
+   ever shows the one snippet stored on it. Off by default: unset,
+   /api/trello-card just says so and the board falls back to whatever's
+   already synced, or the stored snippet. See README for how to generate a
+   read-only token. */
 const TRELLO_API_KEY = process.env.TRELLO_API_KEY || '';
 const TRELLO_TOKEN = process.env.TRELLO_TOKEN || '';
 
@@ -90,7 +111,10 @@ function addCard(code, patch) {
 }
 
 const app = express();
-app.use(express.json({ limit: '100kb' }));
+/* 100kb was plenty before a card could carry its own comment thread — a
+   busy card's worth of synced comments (see sanitizeComments above) can
+   run well past that on its own. */
+app.use(express.json({ limit: '2mb' }));
 
 /* extensions with host_permissions bypass CORS anyway, but the pairing page
    itself may be opened from a different origin during development */
@@ -235,6 +259,10 @@ app.patch('/api/cards/:id', (req, res) => {
   if (body.cardId !== undefined) card.cardId = String(body.cardId).slice(0, 60);
   if (body.notifId !== undefined) card.notifId = String(body.notifId).slice(0, 60);
   if (body.actorUser !== undefined) card.actorUser = String(body.actorUser).slice(0, 60);
+  if (body.comments !== undefined) {
+    const c = sanitizeComments(body.comments);
+    if (c) { card.comments = c; card.commentsAt = Date.now(); }
+  }
   card.updatedAt = Date.now();
   saveBoards(boards);
   res.json({ ok: true, card: card });

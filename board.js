@@ -457,6 +457,13 @@ async function loadHistory(id, focusComposer) {
   const res = await QA.cardWholeFor(card.cardId);
   if (res && res.ok) {
     historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+    /* This tab has a live Trello session and just fetched the real thing —
+       the shareable board's own device never does, so hand it a copy
+       rather than making every viewer set up a separate Trello API
+       key/token just to see what's already sitting right here. Silent and
+       best-effort: a missing/misconfigured mobile-push server must never
+       block or blemish this modal, same spirit as pushToPhone. */
+    QA.updateCard(card.id, { comments: res.comments || [] }).catch(() => {});
   } else {
     historyCache[id] = {
       ok: false,
