@@ -3155,15 +3155,28 @@ var QA = (function () {
   /* A couple of routing calls are exact rules, not judgment calls — cheaper
      and more reliable than asking Gemini, and they run before it so a
      match here skips the AI board classifier below entirely.
-     - Any card whose text mentions a discovery call prep note goes straight
-       to Tax Plan Draft.
+     - A card whose own headline carries a QTM/UTM code ("[QTM2] Gary
+       Warner", same convention as GROUPS above) goes straight to QTM,
+       checked before anything else here. This has to win over the
+       action-items rule below it, not just be a peer of it: a QTM card's
+       own call-recap comment routinely uses "Pending Items:" and "Action
+       items — Dwight:" as its own section headers, so without this a QTM
+       card gets swept onto the Action Items board just for having a
+       normal recap in its thread — checking the comment text at all
+       finds that phrase almost everywhere once it can see past the
+       locally-stored snippet.
+     - Any card whose text mentions a discovery call prep note goes
+       straight to Tax Plan Draft.
      - Any card whose text itself reads as an action-/pending-items list
-       goes straight to the Action Items board — checked after the
-       discovery-call rule, since that one is the rarer, more specific
-       match and should win if a card's text happens to mention both. */
+       goes straight to the Action Items board — checked last, after the
+       two rarer, more specific rules above, since either of those should
+       win if a card's text happens to mention more than one of these. */
+  const QTM_TITLE_RE = /\b(qtm|utm)\s*\d*\b/i;
   const ACTION_ITEMS_RE = /\b(action items?|pending items?)\b/i;
 
   function keywordBoardOverride(fields) {
+    const headline = [fields.context, fields.title].filter(Boolean).join(' ');
+    if (QTM_TITLE_RE.test(headline)) return 'qtm';
     const hay = [fields.context, fields.title, fields.body].filter(Boolean).join(' ').toLowerCase();
     if (/discovery call prep notes?/.test(hay)) return 'taxplan';
     if (ACTION_ITEMS_RE.test(hay)) return 'actionitems';
@@ -4852,7 +4865,7 @@ var QA = (function () {
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, cardSearchTextFor, ACTION_ITEMS_RE, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, cardSearchTextFor, ACTION_ITEMS_RE, QTM_TITLE_RE, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,

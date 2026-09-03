@@ -1105,25 +1105,46 @@ backfillBtn.addEventListener('click', async () => {
     (failed ? ' (' + failed + ' failed — needs an open Trello tab)' : '') + '.';   // ...overwrite it with the fuller result
 });
 
-/* ---------- one-time move: the Action Items board (see keywordBoardOverride
-   in common.js) only ever applies to a card as it's being filed — anything
-   filed before that rule existed, or filed onto Main/QTM by the AI
-   classifier before this keyword check ran first, is stuck wherever it
-   landed. This walks every card not already on that board and tests it: a
-   cheap check first against the locally-stored title/context/body snippet,
-   then — since the phrase can just as easily live in the card's
-   description, a checklist, or a comment the snippet never captured — a
-   fuller Trello lookup (QA.cardSearchTextFor, needs an open Trello tab) for
-   anything the cheap check misses but that has a card to look up. ---------- */
+/* ---------- one-time board fixup (see keywordBoardOverride in common.js,
+   which only ever applies as a card is being filed — anything filed
+   before a rule existed, or before this keyword check ran first, is stuck
+   wherever it landed). Two passes, in this order because the first has to
+   win over the second:
+
+   1. A card whose own headline carries a QTM/UTM code belongs on QTM, full
+      stop — this moves any of those back no matter where they currently
+      sit. This existed because the action-items pass below, once it could
+      see a card's full comment thread and not just its locally-stored
+      snippet, found the phrase "Pending Items:"/"Action items — X:" is
+      just this team's own boilerplate call-recap section headers — it
+      shows up in nearly every QTM card's thread, not only in cards that
+      are themselves an action-items list — and swept QTM cards onto
+      Action Items wholesale. Cheap and unambiguous: no Trello lookup
+      needed, just the title/context already loaded.
+   2. Anything else not already on Action Items, and whose headline is NOT
+      a QTM card, that reads as an action-/pending-items list moves there
+      — a cheap check against the local snippet first, then a fuller
+      Trello lookup (QA.cardSearchTextFor, needs an open Trello tab) for
+      anything the cheap check misses but has a card to look up. ---------- */
 
 recatBtn.addEventListener('click', async () => {
-  const candidates = Object.values(cardsById).filter((c) => cardBoard(c) !== 'actionitems');
-  if (!candidates.length) {
-    statusEl.textContent = 'Nothing to recategorize — every card is already sorted.';
-    return;
-  }
+  const cards = Object.values(cardsById);
+  const headlineOf = (c) => [c.context, c.title].filter(Boolean).join(' ');
+
   recatBtn.disabled = true;
-  let done = 0;
+
+  const backToQtm = cards.filter((c) => cardBoard(c) !== 'qtm' && QA.QTM_TITLE_RE.test(headlineOf(c)));
+  let qtmFixed = 0;
+  for (const card of backToQtm) {
+    recatBtn.textContent = 'Fixing ' + (qtmFixed + 1) + ' of ' + backToQtm.length + '…';
+    try {
+      await QA.updateCard(card.id, { board: 'qtm' });
+      qtmFixed++;
+    } catch (e) { /* leave it where it is — try again next click */ }
+  }
+
+  const candidates = cards.filter((c) => cardBoard(c) !== 'actionitems' && !QA.QTM_TITLE_RE.test(headlineOf(c)));
+  let actionFixed = 0;
   let checked = 0;
   let failed = 0;
   for (const card of candidates) {
@@ -1139,14 +1160,19 @@ recatBtn.addEventListener('click', async () => {
     if (!matched) continue;
     try {
       await QA.updateCard(card.id, { board: 'actionitems' });
-      done++;
+      actionFixed++;
     } catch (e) { /* leave it where it is — try again next click */ }
   }
+
   recatBtn.textContent = 'Recategorize';
   recatBtn.disabled = false;
   await load();
-  statusEl.textContent = 'Moved ' + done + ' card(s) to Action Items' +
-    (failed ? ' (' + failed + ' could not be fully checked — needs an open Trello tab)' : '') + '.';
+  statusEl.textContent = (qtmFixed || actionFixed)
+    ? 'Fixed ' + (qtmFixed + actionFixed) + ' card(s)' +
+      (qtmFixed ? ' — ' + qtmFixed + ' moved back to QTM' : '') +
+      (actionFixed ? (qtmFixed ? ',' : ' —') + ' ' + actionFixed + ' moved to Action Items' : '') +
+      (failed ? ' (' + failed + ' could not be fully checked — needs an open Trello tab)' : '') + '.'
+    : 'Nothing to fix — every card is already sorted.';
 });
 
 /* ---------- daily update: one AI-drafted message of which cards are
