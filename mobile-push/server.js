@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
-const BOARDS = ['main', 'qtm', 'taxplan', 'slack'];
+const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -24,6 +24,16 @@ if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
   console.error('Run: npm run generate-vapid   (then put the keys in .env)');
   process.exit(1);
 }
+
+/* Optional — the board page has no Trello session of its own (it isn't the
+   extension, so it can't read trello.com's cookies), so a card opened here
+   only ever shows the one snippet stored on it unless this server holds a
+   Trello API key + a READ-ONLY token to fetch the rest itself. Off by
+   default: unset, /api/trello-card just says so and the board falls back
+   to the stored snippet, same as before this existed. See README for how
+   to generate a read-only token. */
+const TRELLO_API_KEY = process.env.TRELLO_API_KEY || '';
+const TRELLO_TOKEN = process.env.TRELLO_TOKEN || '';
 
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -146,6 +156,46 @@ app.get('/api/cards', (req, res) => {
   if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
   const boards = loadBoards();
   res.json({ ok: true, cards: boards[code] || [] });
+});
+
+/* Read-only mirror of the extension's fetchCardWhole() (common.js) — same
+   fields, same shape, just fetched with a server-held key+token over
+   Trello's public API instead of injected into an open, logged-in Trello
+   tab, since this page has no tab to inject into. Never touches anything
+   write-side: no comment, no reaction, no move — TRELLO_TOKEN only ever
+   needs read scope for this. */
+app.get('/api/trello-card', async (req, res) => {
+  if (!TRELLO_API_KEY || !TRELLO_TOKEN) {
+    return res.status(501).json({
+      ok: false,
+      error: 'This server has no Trello credentials set up yet (TRELLO_API_KEY / TRELLO_TOKEN) — see mobile-push/README.md.'
+    });
+  }
+  const cardId = String(req.query.cardId || '');
+  if (!cardId) return res.status(400).json({ ok: false, error: 'Missing cardId.' });
+
+  try {
+    const url = 'https://api.trello.com/1/cards/' + encodeURIComponent(cardId) +
+      '?fields=name' +
+      '&actions=commentCard&actions_limit=1000&action_memberCreator_fields=username,fullName' +
+      '&key=' + encodeURIComponent(TRELLO_API_KEY) + '&token=' + encodeURIComponent(TRELLO_TOKEN);
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).json({ ok: false, error: 'Trello said no (' + r.status + ').' });
+    const j = await r.json();
+
+    const comments = (Array.isArray(j.actions) ? j.actions : [])
+      .filter((a) => a && a.type === 'commentCard')
+      .map((a) => ({
+        at: Date.parse((a && a.date) || '') || 0,
+        by: ((a && a.memberCreator && a.memberCreator.username) || '').toLowerCase(),
+        byName: (a && a.memberCreator && a.memberCreator.fullName) || '',
+        text: String((a && a.data && a.data.text) || '').replace(/\s+/g, ' ').trim()
+      }));
+
+    res.json({ ok: true, comments: comments });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: String((e && e.message) || e) });
+  }
 });
 
 app.post('/api/cards', (req, res) => {

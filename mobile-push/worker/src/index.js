@@ -5,7 +5,7 @@ const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 
 const COLUMNS = ['inbox', 'doing', 'action', 'done'];
-const BOARDS = ['main', 'qtm', 'taxplan', 'slack'];
+const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const boardKey = (code) => 'board:' + code;
 
 function newCode() {
@@ -145,6 +145,45 @@ export default {
       const code = String(url.searchParams.get('code') || '').toUpperCase();
       if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
       return json({ ok: true, cards: await loadBoard(env, code) });
+    }
+
+    /* Read-only mirror of the extension's fetchCardWhole() (common.js) —
+       same fields, same shape, just fetched with a worker-secret key+token
+       over Trello's public API instead of injected into an open, logged-in
+       Trello tab, since this page has no tab to inject into. Never touches
+       anything write-side: TRELLO_TOKEN only ever needs read scope here. */
+    if (url.pathname === '/api/trello-card' && request.method === 'GET') {
+      if (!env.TRELLO_API_KEY || !env.TRELLO_TOKEN) {
+        return json({
+          ok: false,
+          error: 'This server has no Trello credentials set up yet (TRELLO_API_KEY / TRELLO_TOKEN) — see mobile-push/README.md.'
+        }, 501);
+      }
+      const cardId = String(url.searchParams.get('cardId') || '');
+      if (!cardId) return json({ ok: false, error: 'Missing cardId.' }, 400);
+
+      try {
+        const trelloUrl = 'https://api.trello.com/1/cards/' + encodeURIComponent(cardId) +
+          '?fields=name' +
+          '&actions=commentCard&actions_limit=1000&action_memberCreator_fields=username,fullName' +
+          '&key=' + encodeURIComponent(env.TRELLO_API_KEY) + '&token=' + encodeURIComponent(env.TRELLO_TOKEN);
+        const r = await fetch(trelloUrl);
+        if (!r.ok) return json({ ok: false, error: 'Trello said no (' + r.status + ').' }, r.status);
+        const j = await r.json();
+
+        const comments = (Array.isArray(j.actions) ? j.actions : [])
+          .filter((a) => a && a.type === 'commentCard')
+          .map((a) => ({
+            at: Date.parse((a && a.date) || '') || 0,
+            by: ((a && a.memberCreator && a.memberCreator.username) || '').toLowerCase(),
+            byName: (a && a.memberCreator && a.memberCreator.fullName) || '',
+            text: String((a && a.data && a.data.text) || '').replace(/\s+/g, ' ').trim()
+          }));
+
+        return json({ ok: true, comments: comments });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e) }, 502);
+      }
     }
 
     if (url.pathname === '/api/cards' && request.method === 'POST') {

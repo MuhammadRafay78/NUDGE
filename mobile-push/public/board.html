@@ -28,9 +28,13 @@
   .lede { color: var(--muted); font-size: 13px; margin: 0; }
   .back { color: var(--accent); text-decoration: none; font-size: 13px; }
 
-  .searchRow { padding: 0 16px 14px; }
+  .searchRow { padding: 0 16px 14px; display: flex; gap: 8px; }
   .searchRow input {
-    width: 100%; font: inherit; padding: 10px 12px; border-radius: 9px;
+    flex: 1 1 auto; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .searchRow select {
+    flex: 0 0 auto; font: inherit; font-size: 13px; padding: 10px 10px; border-radius: 9px;
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
 
@@ -82,6 +86,9 @@
   .item .del { color: var(--muted); background: none; border: none; font-size: 16px; line-height: 1;
     padding: 3px 5px; cursor: pointer; border-radius: 5px; }
   .item .del:active { color: var(--accent); background: var(--accent-soft); }
+  .item.dragging { opacity: .4; }
+  .col.drag-over { background: var(--accent-soft); border-color: var(--accent); }
+  .board-tab.drag-over { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
   .status { color: var(--muted); font-size: 13px; padding: 0 16px; }
 
@@ -138,6 +145,21 @@
   .modal-body .li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
   .modal-body .p { margin: 9px 0; }
   .modal-body .empty { color: var(--muted); padding: 0; text-align: left; }
+
+  /* One message, one box — like a chat bubble, so a thread of several
+     replies reads as separate messages instead of one continuous block.
+     A comment that mentions him is exactly where an action item tends to
+     hide in a longer thread — flagged so it doesn't take reading every
+     reply to spot. */
+  .modal-item {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 12px 8px; margin: 10px 0;
+  }
+  .modal-item.mentioned { border-color: var(--accent); background: var(--accent-soft); }
+  .modal-item .meta2 { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .modal-item .meta2 b { color: var(--fg); font-weight: 650; }
+  .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.5; }
+  .modal-item .hist-text > div:first-child { margin-top: 0 !important; }
 </style>
 </head>
 <body>
@@ -151,6 +173,10 @@
 
 <div class="searchRow">
   <input type="search" id="cardSearch" placeholder="Search cards…" maxlength="200">
+  <select id="sortMode" title="Order cards within each column by">
+    <option value="due">Sort: Due date</option>
+    <option value="added">Sort: Date added</option>
+  </select>
 </div>
 
 <div class="status" id="status"></div>

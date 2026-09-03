@@ -5,25 +5,34 @@ const COLUMNS = [
   { id: 'done', label: 'Done' }
 ];
 
-/* Four boards sharing the same four columns above — Main for one-off
-   client asks, QTM for quarterly-tax-meeting prep/follow-up (including its
-   own data upkeep), Tax Plan Draft for anything mentioning a discovery
-   call prep note, Slack for tasks read off an open Slack tab. A freshly-
-   tagged card picks one automatically (see the extension's
+/* Boards sharing the same four columns above — Main for one-off client
+   asks, QTM for quarterly-tax-meeting prep/follow-up (including its own
+   data upkeep), Tax Plan Draft for anything mentioning a discovery call
+   prep note, Action Items for anything that itself reads as an action-/
+   pending-items list regardless of which client or meeting it's for. A
+   freshly-tagged card picks one automatically (see the extension's
    classifyCardBoard/keywordBoardOverride/checkSlack); this is just which
    one is on screen right now. */
 const BOARDS = [
   { id: 'main', label: 'Main' },
   { id: 'qtm', label: 'QTM' },
   { id: 'taxplan', label: 'Tax Plan Draft' },
-  { id: 'slack', label: 'Slack' }
+  { id: 'actionitems', label: 'Action Items' }
 ];
 /* A card with no .board (filed before boards existed) or one that names a
-   board that's since been retired (e.g. the old "masterdata") falls back
-   to Main instead of vanishing from every tab. */
+   board that's since been retired (e.g. the old "masterdata", or "slack" —
+   Slack-sourced cards go through normal routing now) falls back to Main
+   instead of vanishing from every tab. */
 function cardBoard(c) {
   return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
+
+/* Same list as ME in the extension's common.js — duplicated rather than
+   shared, since this page is a standalone webpage with no access to the
+   extension's code at all, same reason cardBoard() above is duplicated
+   too. Used to flag a comment in the thread that mentions him, same as
+   the extension's board does. */
+const ME = ['@rafay10', '@rafay', 'Rafay', 'taxplan@dilucci.com'];
 
 /* Whole calendar days in this phone's own local time — good enough for a
    personal device, and simpler than the extension's business-timezone
@@ -76,11 +85,32 @@ const boardEl = document.getElementById('board');
 const boardTabsEl = document.getElementById('boardTabs');
 const statusEl = document.getElementById('status');
 const cardSearch = document.getElementById('cardSearch');
+const sortModeEl = document.getElementById('sortMode');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
 if (!BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
+
+const SORT_MODES = ['due', 'added'];
+let sortMode = localStorage.getItem('nudgeSortMode') || 'due';
+if (!SORT_MODES.includes(sortMode)) sortMode = 'due';
+sortModeEl.value = sortMode;
+sortModeEl.addEventListener('change', () => {
+  sortMode = SORT_MODES.includes(sortModeEl.value) ? sortModeEl.value : 'due';
+  localStorage.setItem('nudgeSortMode', sortMode);
+  render(lastCards);
+});
+
+/* "Date added" is newest first — cards already came back from the API in
+   that order (both backends unshift a new one onto the list), this just
+   keeps it true regardless of what "due date" mode leaves the array in
+   after a switch back. */
+function sortCards(items) {
+  return sortMode === 'added'
+    ? items.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    : items.slice().sort((a, b) => dueSortValue(a) - dueSortValue(b));
+}
 
 function ago(ms) {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
@@ -132,6 +162,16 @@ async function deleteCard(id) {
   });
 }
 
+/* Read-only mirror of what the extension's "Open card" modal shows — the
+   server proxies Trello with its own key+token (Settings on the server,
+   not here) since this page has no Trello session of its own. Not every
+   deployment has that configured, so a 501 here is expected and handled,
+   not an error to alarm over. */
+async function fetchTrelloCard(cardId) {
+  const data = await api('/api/trello-card?cardId=' + encodeURIComponent(cardId));
+  return { comments: data.comments || [] };
+}
+
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = COLUMNS.map((c) =>
@@ -148,7 +188,7 @@ function itemHtml(card) {
   const byline = card.context ? card.title : '';
   const due = dueText(card);
   return (
-    '<div class="item" data-id="' + esc(card.id) + '">' +
+    '<div class="item" data-id="' + esc(card.id) + '" draggable="true">' +
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (due ? '<div class="due">' + esc(due) + '</div>' : '') +
@@ -222,6 +262,31 @@ function formatBodyHtml(text) {
   }).join('');
 }
 
+/* A card's own NOTE is already known to mention him (that's the whole
+   reason it was filed) — but once the full thread is showing, later
+   replies from other people are exactly where a "can you also do X" or
+   an actual action item tends to hide. Highlighted so it doesn't take
+   reading every line to find. */
+function mentionsMe(text) {
+  const t = (text || '').toLowerCase();
+  return ME.some((n) => {
+    const nn = n.toLowerCase();
+    return t.indexOf(nn) !== -1;
+  });
+}
+
+function modalCommentHtml(c) {
+  const when = c.at ? ago(c.at) : '';
+  const who = c.byName || c.by || 'Someone';
+  const mentioned = mentionsMe(c.text);
+  return (
+    '<div class="modal-item' + (mentioned ? ' mentioned' : '') + '">' +
+      '<div class="meta2"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
+      '<div class="hist-text">' + formatBodyHtml(c.text) + '</div>' +
+    '</div>'
+  );
+}
+
 function modalHtml(card) {
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
@@ -229,6 +294,24 @@ function modalHtml(card) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Reply on Trello &#8599;</a>'
     : '';
+
+  let body;
+  if (!card.cardId) {
+    /* A hand-typed or Slack-origin card has no Trello card behind it at
+       all — nothing to fetch, so this is the only content there ever is. */
+    body = formatBodyHtml(card.body);
+  } else {
+    const cache = historyCache[card.id];
+    if (!cache || cache.loading) {
+      body = '<div class="status" style="padding:0">Loading the full card from Trello…</div>';
+    } else if (!cache.ok) {
+      body = '<div class="status" style="padding:0;color:var(--accent)">' + esc(cache.error) + '</div>' + formatBodyHtml(card.body);
+    } else {
+      const comments = cache.comments || [];
+      body = comments.length ? comments.map(modalCommentHtml).join('') : formatBodyHtml(card.body);
+    }
+  }
+
   return (
     '<div class="modal-head">' +
       '<button class="modal-close" title="Close">&times;</button>' +
@@ -237,7 +320,7 @@ function modalHtml(card) {
       (due ? '<div class="due">' + esc(due) + '</div>' : '') +
       trelloLink +
     '</div>' +
-    '<div class="modal-body">' + formatBodyHtml(card.body) + '</div>'
+    '<div class="modal-body">' + body + '</div>'
   );
 }
 
@@ -245,13 +328,31 @@ let modalCardId = null;
 let cardsById = {};
 let lastCards = [];    // re-filtered on every search keystroke, no refetch needed
 let searchQuery = '';
+const historyCache = {};   // card id -> { loading } | { ok:true, desc, checklist, comments } | { ok:false, error }
 
 function openModal(id) {
   const card = cardsById[id];
   if (!card) return;
   modalCardId = id;
+  if (card.cardId) {
+    delete historyCache[id];   // always fetch fresh on open, so a card just updated in Trello shows that
+    historyCache[id] = { loading: true };
+  }
   modalBoxEl.innerHTML = modalHtml(card);
   modalEl.hidden = false;
+  if (card.cardId) loadHistory(id);
+}
+
+async function loadHistory(id) {
+  const card = cardsById[id];
+  if (!card || !card.cardId) return;
+  try {
+    const res = await fetchTrelloCard(card.cardId);
+    historyCache[id] = { ok: true, comments: res.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+  } catch (e) {
+    historyCache[id] = { ok: false, error: (e && e.message) || 'Could not reach the board server.' };
+  }
+  if (modalCardId === id) modalBoxEl.innerHTML = modalHtml(card);
 }
 
 function closeModal() {
@@ -310,7 +411,7 @@ function render(cards) {
 
   boardEl.innerHTML = COLUMNS.map((col) => {
     const total = onBoard.filter((c) => c.column === col.id);
-    const items = visible.filter((c) => c.column === col.id).sort((a, b) => dueSortValue(a) - dueSortValue(b));
+    const items = sortCards(visible.filter((c) => c.column === col.id));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
@@ -361,6 +462,80 @@ boardEl.addEventListener('click', async (e) => {
   if (e.target.closest('select, a.open')) return;
   const item = e.target.closest('.item');
   if (item) openModal(item.dataset.id);
+});
+
+/* ---------- drag and drop — between columns, and onto a board tab to move
+   a card to a different board entirely, same as the extension's board ---------- */
+
+boardEl.addEventListener('dragstart', (e) => {
+  const item = e.target.closest('.item');
+  if (!item) return;
+  e.dataTransfer.setData('text/plain', item.dataset.id);
+  e.dataTransfer.effectAllowed = 'move';
+  item.classList.add('dragging');
+});
+
+boardEl.addEventListener('dragend', (e) => {
+  const item = e.target.closest('.item');
+  if (item) item.classList.remove('dragging');
+  boardEl.querySelectorAll('.col.drag-over').forEach((c) => c.classList.remove('drag-over'));
+  boardTabsEl.querySelectorAll('.board-tab.drag-over').forEach((b) => b.classList.remove('drag-over'));
+});
+
+boardEl.addEventListener('dragover', (e) => {
+  const col = e.target.closest('.col');
+  if (!col) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  col.classList.add('drag-over');
+});
+
+boardEl.addEventListener('dragleave', (e) => {
+  const col = e.target.closest('.col');
+  if (col && !col.contains(e.relatedTarget)) col.classList.remove('drag-over');
+});
+
+boardEl.addEventListener('drop', async (e) => {
+  const col = e.target.closest('.col');
+  if (!col) return;
+  e.preventDefault();
+  col.classList.remove('drag-over');
+  const id = e.dataTransfer.getData('text/plain');
+  if (!id) return;
+  try {
+    await moveCard(id, col.dataset.col);
+    load();
+  } catch (err) {
+    statusEl.textContent = 'Could not move: ' + err.message;
+  }
+});
+
+boardTabsEl.addEventListener('dragover', (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (!tab) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  tab.classList.add('drag-over');
+});
+
+boardTabsEl.addEventListener('dragleave', (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (tab && !tab.contains(e.relatedTarget)) tab.classList.remove('drag-over');
+});
+
+boardTabsEl.addEventListener('drop', async (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (!tab) return;
+  e.preventDefault();
+  tab.classList.remove('drag-over');
+  const id = e.dataTransfer.getData('text/plain');
+  if (!id) return;
+  try {
+    await moveCardBoard(id, tab.dataset.board);
+    load();
+  } catch (err) {
+    statusEl.textContent = 'Could not move: ' + err.message;
+  }
 });
 
 cardSearch.addEventListener('input', () => {

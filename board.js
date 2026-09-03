@@ -7,6 +7,7 @@ const warnEl = document.getElementById('notConfigured');
 const cardSearch = document.getElementById('cardSearch');
 const cardSearchClear = document.getElementById('cardSearchClear');
 const backfillBtn = document.getElementById('backfillBtn');
+const recatBtn = document.getElementById('recatBtn');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
@@ -96,6 +97,27 @@ function dueText(card) {
    guessed at. */
 function dueSortValue(card) {
   return card.dueAt ? new Date(card.dueAt).getTime() : Infinity;
+}
+
+const SORT_MODES = ['due', 'added'];
+const sortModeEl = document.getElementById('sortMode');
+let sortMode = localStorage.getItem('nudgeSortMode') || 'due';
+if (!SORT_MODES.includes(sortMode)) sortMode = 'due';
+sortModeEl.value = sortMode;
+sortModeEl.addEventListener('change', () => {
+  sortMode = SORT_MODES.includes(sortModeEl.value) ? sortModeEl.value : 'due';
+  localStorage.setItem('nudgeSortMode', sortMode);
+  render(lastCards);
+});
+
+/* "Date added" is newest first — cards already came back from the API in
+   that order (both backends unshift a new one onto the list), this just
+   keeps it true regardless of what "due date" mode leaves the array in
+   after a switch back. */
+function sortCards(items) {
+  return sortMode === 'added'
+    ? items.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    : items.slice().sort((a, b) => dueSortValue(a) - dueSortValue(b));
 }
 
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
@@ -284,43 +306,26 @@ function itemHtml(card, terms) {
   );
 }
 
-/* ---------- "Open card" modal ----------
+/* ---------- "Open card" modal: just the comments, nothing else ----------
    Trello's own card-open behavior — click a card, it opens on top of the
-   board, you read it and reply, close it, you're right back where you
-   were. Only one modal exists at a time (there's only ever one open
-   card), which is also what lets the reply composer be a single
-   persistent piece of markup instead of one per card.
+   board, you read the thread and reply, close it, you're right back where
+   you were. No description, no checklist summary; those turned out to be
+   clutter nobody asked for. Only one modal exists at a time (there's only
+   ever one open card), which is also what lets the reply composer be a
+   single persistent piece of markup instead of one per card. */
 
-   Description and checklist were left out at first as clutter nobody
-   asked for — but some cards track their pending items as an actual
-   Trello checklist rather than typing them into a comment, and
-   cardWholeFor() already fetches both alongside the comment thread, so
-   leaving them off meant part of "the whole card" never made it to the
-   screen. Shown above the thread now, same dense-note formatting as a
-   comment gets. */
-
-function descriptionHtml(desc) {
-  if (!desc) return '';
-  return (
-    '<div class="modal-item modal-desc">' +
-      '<div class="hist-meta"><b>Description</b></div>' +
-      '<div class="hist-text">' + formatCommentHtml(desc) + '</div>' +
-    '</div>'
-  );
-}
-
-function checklistHtml(items) {
-  if (!items || !items.length) return '';
-  return (
-    '<div class="modal-item modal-checklist">' +
-      '<div class="hist-meta"><b>Checklist</b></div>' +
-      items.map((it) =>
-        '<div class="chk-item' + (it.done ? ' done' : '') + '">' +
-          (it.done ? '&#9745;' : '&#9744;') + ' ' + esc(it.name) +
-        '</div>'
-      ).join('') +
-    '</div>'
-  );
+/* A card's own NOTE is already known to mention him (that's the whole
+   reason it was filed) — but once the full thread is showing, later
+   replies from other people are exactly where a "can you also do X"
+   or an actual action item tends to hide. Highlighted the same way for
+   any comment that mentions him, so it doesn't take reading every line
+   to find. */
+function mentionsMe(text, names) {
+  const t = (text || '').toLowerCase();
+  return (names || []).some((n) => {
+    const nn = String(n || '').trim().toLowerCase();
+    return nn && t.indexOf(nn) !== -1;
+  });
 }
 
 function modalCommentHtml(c, i) {
@@ -335,8 +340,9 @@ function modalCommentHtml(c, i) {
     ? '<a href="' + esc(image.url) + '" target="_blank" rel="noreferrer">' +
       '<img class="hist-img" src="' + esc(image.url) + '" alt="' + esc(image.alt) + '" loading="lazy"></a>'
     : '';
+  const mentioned = mentionsMe(c.text, QA.ME);
   return (
-    '<div class="modal-item" data-idx="' + i + '">' +
+    '<div class="modal-item' + (mentioned ? ' mentioned' : '') + '" data-idx="' + i + '">' +
       '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
       textHtml + imgHtml +
       '<div class="hist-acts">' +
@@ -387,12 +393,9 @@ function modalHtml(card) {
     body = '<div class="modal-status bad">&#9888; ' + esc(cache.error || 'Could not load this card.') + '</div>';
   } else {
     const comments = cache.comments || [];
-    /* Description and checklist first, same order Trello's own card view
-       leads with, then the thread — most-recent-first, same as before. */
-    body = descriptionHtml(cache.desc) + checklistHtml(cache.checklist) +
-      (comments.length
-        ? comments.map(modalCommentHtml).join('')
-        : '<div class="modal-status">No comments yet on this card.</div>');
+    body = comments.length
+      ? comments.map(modalCommentHtml).join('')
+      : '<div class="modal-status">No comments yet on this card.</div>';
   }
 
   return (
@@ -446,18 +449,7 @@ async function loadHistory(id, focusComposer) {
   if (!card || !card.cardId) return;
   const res = await QA.cardWholeFor(card.cardId);
   if (res && res.ok) {
-    /* cardWholeFor already fetches the card's description and checklist
-       alongside its comments — "the whole card", not just the thread — so
-       keep those here too instead of discarding everything but comments,
-       the way this used to. Whatever pending-items list a card is tracking
-       as an actual Trello checklist (rather than typed into a comment)
-       only ever existed in the response, never on screen. */
-    historyCache[id] = {
-      ok: true,
-      desc: res.desc || '',
-      checklist: res.checklist || [],
-      comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0))
-    };
+    historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
   } else {
     historyCache[id] = {
       ok: false,
@@ -514,7 +506,7 @@ function render(cards) {
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
     const total = onBoard.filter((c) => c.column === col.id);
-    const items = visible.filter((c) => c.column === col.id).sort((a, b) => dueSortValue(a) - dueSortValue(b));
+    const items = sortCards(visible.filter((c) => c.column === col.id));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
@@ -968,6 +960,7 @@ boardEl.addEventListener('dragend', (e) => {
   const item = e.target.closest('.item');
   if (item) item.classList.remove('dragging');
   boardEl.querySelectorAll('.col.drag-over').forEach((c) => c.classList.remove('drag-over'));
+  boardTabsEl.querySelectorAll('.board-tab.drag-over').forEach((b) => b.classList.remove('drag-over'));
   dragging = false;
 });
 
@@ -995,6 +988,39 @@ boardEl.addEventListener('drop', async (e) => {
   try {
     await QA.moveCard(id, col.dataset.col);
     if (card) QA.markCardHandled(card).catch(() => {});   // a deliberate move is "I've dealt with this"
+    load();
+  } catch (err) {
+    statusEl.textContent = 'Could not move: ' + err.message;
+  }
+});
+
+/* Dropping a card directly onto a board tab moves it to that board —
+   same drag, a different kind of target, so it shares dragstart/dragend
+   with the column drop above. */
+boardTabsEl.addEventListener('dragover', (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (!tab) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  tab.classList.add('drag-over');
+});
+
+boardTabsEl.addEventListener('dragleave', (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (tab && !tab.contains(e.relatedTarget)) tab.classList.remove('drag-over');
+});
+
+boardTabsEl.addEventListener('drop', async (e) => {
+  const tab = e.target.closest('.board-tab');
+  if (!tab) return;
+  e.preventDefault();
+  tab.classList.remove('drag-over');
+  const id = e.dataTransfer.getData('text/plain');
+  if (!id) return;
+  const card = cardsById[id];
+  try {
+    await QA.updateCard(id, { board: tab.dataset.board });
+    if (card) QA.markCardHandled(card).catch(() => {});
     load();
   } catch (err) {
     statusEl.textContent = 'Could not move: ' + err.message;
@@ -1055,6 +1081,39 @@ backfillBtn.addEventListener('click', async () => {
   await load();   // refresh the board first — load() sets its own status text, so...
   statusEl.textContent = 'Backfilled ' + done + ' of ' + targets.length +
     (failed ? ' (' + failed + ' failed — needs an open Trello tab)' : '') + '.';   // ...overwrite it with the fuller result
+});
+
+/* ---------- one-time move: the Action Items board (see keywordBoardOverride
+   in common.js) only ever applies to a card as it's being filed — anything
+   filed before that rule existed, or filed onto Main/QTM by the AI
+   classifier before this keyword check ran first, is stuck wherever it
+   landed. This walks what's already loaded and moves anything that reads
+   as an action-/pending-items list but isn't on that board yet. Purely a
+   client-side text scan — no Trello lookup, so no tab needed. ---------- */
+
+recatBtn.addEventListener('click', async () => {
+  const targets = Object.values(cardsById).filter((c) => {
+    if (cardBoard(c) === 'actionitems') return false;
+    const hay = [c.context, c.title, c.body].filter(Boolean).join(' ').toLowerCase();
+    return /\b(action items?|pending items?)\b/.test(hay);
+  });
+  if (!targets.length) {
+    statusEl.textContent = 'Nothing to recategorize — every card that reads as action/pending items is already on that board.';
+    return;
+  }
+  recatBtn.disabled = true;
+  let done = 0;
+  for (const card of targets) {
+    recatBtn.textContent = 'Recategorizing ' + (done + 1) + ' of ' + targets.length + '…';
+    try {
+      await QA.updateCard(card.id, { board: 'actionitems' });
+      done++;
+    } catch (e) { /* leave it where it is — try again next click */ }
+  }
+  recatBtn.textContent = 'Recategorize';
+  recatBtn.disabled = false;
+  await load();
+  statusEl.textContent = 'Moved ' + done + ' of ' + targets.length + ' card(s) to Action Items.';
 });
 
 /* ---------- daily update: one AI-drafted message of which cards are
