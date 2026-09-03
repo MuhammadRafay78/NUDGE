@@ -177,9 +177,20 @@ on that device too.
 By default, a card opened from that link only shows the one snippet
 Nudge stored on it when it was filed — this page has no Trello session of
 its own (it isn't the extension, so it can't read trello.com's cookies),
-so there's nothing more it can fetch on its own. Setting `TRELLO_API_KEY`
-/ `TRELLO_TOKEN` lets the *server* fetch a card's full comment thread on
-its behalf instead:
+so there's nothing more it can fetch on its own.
+
+The extension does have a Trello session, though, and it already fetches a
+card's full comment thread the moment you open that same card in its own
+**Open card** panel (popup/side panel → Board) — so it hands a copy to the
+server right then, and the shareable board just shows that. No setup, no
+credentials: open a card once in the extension and it's there for the
+shareable link too, kept fresh every time you reopen it there. The catch
+is it only works for a card *someone has opened in the extension first* —
+nothing to hand over otherwise.
+
+For a card nobody's opened yet, setting `TRELLO_API_KEY` / `TRELLO_TOKEN`
+lets the *server* fetch its comment thread directly instead, same as the
+extension-synced path but without needing the extension involved at all:
 
 1. Get an API key at [trello.com/app-key](https://trello.com/app-key)
    (while logged into Trello) — that page also shows your key.
@@ -191,8 +202,9 @@ its behalf instead:
 
 `scope=read` means this token can only ever read — it can't post a
 comment, react, or move a card, on this or anything else in your Trello
-account. Leave both unset to skip this entirely; the board just keeps
-showing the stored snippet, same as before this existed.
+account. Leave both unset to skip this entirely — the board still shows
+whatever the extension has already synced, and otherwise falls back to
+the stored snippet, same as before either of these existed.
 
 ## API
 
@@ -204,7 +216,7 @@ showing the stored snippet, same as before this existed.
 | `POST /api/unpair` | `{ code }` | Forgets that phone |
 | `GET /api/cards?code=` | — | Lists that code's board cards |
 | `POST /api/cards` | `{ code, title, body?, url?, column? }` | Adds a card (defaults to Inbox) |
-| `PATCH /api/cards/:id` | `{ code, column }` | Moves a card to `inbox`\|`doing`\|`done` |
+| `PATCH /api/cards/:id` | `{ code, ...fields }` | Updates any subset of a card's fields — `column` (`inbox`\|`doing`\|`done`), `board`, or others including `comments` (the extension syncing a card's Trello thread) |
 | `DELETE /api/cards/:id` | `{ code }` | Removes a card |
 | `GET /api/trello-card?cardId=` | — | A card's full comment thread from Trello — 501 if `TRELLO_API_KEY`/`TRELLO_TOKEN` aren't set |
 
