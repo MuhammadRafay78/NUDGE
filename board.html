@@ -14,6 +14,8 @@
     }
     .bar2 input[type=text] { flex: 1 1 260px; font: inherit; padding: 8px 10px;
       border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+    .bar2 select#sortMode { font: inherit; font-size: 13px; padding: 7px 9px;
+      border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
     .meta { color: var(--muted); font-size: 12px; }
     .search-wrap { position: relative; flex: 1 1 260px; display: flex; }
     .search-wrap input { flex: 1; padding-right: 28px; }
@@ -33,6 +35,7 @@
     }
     .board-tab:hover { color: var(--fg); border-color: var(--accent); }
     .board-tab.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+    .board-tab.drag-over { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
     .board-tab .n { color: inherit; opacity: .75; font-weight: 700; }
 
     .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: start; }
@@ -135,6 +138,10 @@
       min-width: 0; background: var(--card); border: 1px solid var(--line);
       border-radius: 12px; padding: 10px 12px 8px;
     }
+    /* A comment that mentions him is exactly where an action item tends to
+       hide in a longer thread — flagged so it doesn't take reading every
+       reply to spot. */
+    .modal-item.mentioned { border-color: var(--accent); background: var(--accent-soft); }
     .modal-item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
     .modal-item .hist-meta b { color: var(--fg); font-weight: 650; }
     .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }
@@ -145,8 +152,6 @@
     }
     .modal-item .hist-li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
     .modal-item .hist-p { margin: 8px 0; }
-    .modal-checklist .chk-item { font-size: 13px; padding: 3px 0; overflow-wrap: anywhere; }
-    .modal-checklist .chk-item.done { color: var(--muted); text-decoration: line-through; }
     .modal-item .hist-acts { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
     .modal-item .hist-acts .hist-reply-btn { color: var(--accent); font-size: 11.5px; background: none;
       border: none; padding: 0 0 0 4px; cursor: pointer; }
@@ -187,6 +192,10 @@
       <input type="text" id="cardSearch" placeholder="Search cards… (press / to focus)" maxlength="200">
       <button class="search-clear" id="cardSearchClear" title="Clear search" hidden>&times;</button>
     </div>
+    <select id="sortMode" title="Order cards within each column by">
+      <option value="due">Sort: Due date</option>
+      <option value="added">Sort: Date added</option>
+    </select>
     <span class="spacer" style="flex:1"></span>
     <input type="text" id="updateRecipient" placeholder="Update for…" maxlength="60" title="Who this daily update is addressed to">
     <input type="file" id="updateImageInput" accept="image/*" hidden>
@@ -194,6 +203,7 @@
     <span class="meta" id="updateImageState"></span>
     <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
     <button class="btn" id="backfillBtn" title="Fill in client name + due date for older cards, and make any card's due date start updating live instead of staying frozen — needs an open Trello tab">Backfill details</button>
+    <button class="btn" id="recatBtn" title="Move any already-filed card whose text reads as an action-/pending-items list onto the Action Items board, wherever it currently sits">Recategorize</button>
     <span class="meta" id="status"></span>
   </div>
 

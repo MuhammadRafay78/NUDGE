@@ -1474,18 +1474,16 @@ var QA = (function () {
     return inTrelloTab(fetchCardDetails, [cardId], !!autoOpen);
   }
 
-  /* The whole card in one request — description, due, checklist progress and the
-     full comment feed — what the board's "Open card" panel expands into. This is
-     meant to read like the card itself, not just its comments, so it pulls
-     everything Trello's own card-detail view leads with. Same "needs an open
+  /* A card's due date and full comment thread in one request — what the board's
+     "Open card" panel shows. Just the comments, nothing else; description and
+     checklist turned out to be clutter nobody asked for. Same "needs an open
      Trello tab" constraint as the other card-scoped lookups above. Injected, so
      it must reference nothing outside itself. */
   function fetchCardWhole(cardId) {
     return (async () => {
       try {
         const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) +
-          '?fields=name,desc,due,dueComplete' +
-          '&checklists=all&checklist_fields=name&checkItem_fields=name,state' +
+          '?fields=name,due,dueComplete' +
           /* 1000 is Trello's own documented ceiling for actions_limit — a
              card with more real comments than that is not realistic here,
              so this is "get everything" rather than a real cap. The old
@@ -1496,13 +1494,6 @@ var QA = (function () {
           { credentials: 'same-origin', headers: { Accept: 'application/json' } });
         if (!res.ok) return { ok: false, status: res.status };
         const j = await res.json();
-
-        const checklist = [];
-        (Array.isArray(j.checklists) ? j.checklists : []).forEach(function (cl) {
-          (cl.checkItems || []).forEach(function (it) {
-            checklist.push({ name: String(it.name || '').replace(/\s+/g, ' ').trim(), done: it.state === 'complete' });
-          });
-        });
 
         const comments = (Array.isArray(j.actions) ? j.actions : [])
           .filter(function (a) { return a && a.type === 'commentCard'; })
@@ -1516,9 +1507,9 @@ var QA = (function () {
           });
 
         return {
-          ok: true, name: j.name || '', desc: String(j.desc || '').trim(),
+          ok: true, name: j.name || '',
           due: j.due || null, dueComplete: !!j.dueComplete,
-          checklist: checklist, comments: comments
+          comments: comments
         };
       } catch (e) {
         return { ok: false, error: String((e && e.message) || e) };
@@ -3100,14 +3091,19 @@ var QA = (function () {
      exactly one. "Main" is everything else: one-off client asks, replies,
      deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself. "Tax
      Plan Draft" is a fixed rule, not an AI guess — see
-     keywordBoardOverride. "Slack" is anything checkSlack below files —
-     never AI-routed onto another board, since it's already a distinct
-     source. */
+     keywordBoardOverride. "Action Items" is also a fixed rule — anything
+     whose text itself reads as an action-/pending-items list, regardless
+     of which client or meeting it's for, so those never get buried on
+     whichever board they'd otherwise land on. A card checkSlack below
+     files goes through this same routing rather than a dedicated board of
+     its own — there used to be one ("Slack"), retired since; a card
+     filed under that id before falls back to Main automatically, same as
+     any other retired board id (see cardBoard in board.js). */
   const BOARDS = [
     { id: 'main', label: 'Main' },
     { id: 'qtm', label: 'QTM' },
     { id: 'taxplan', label: 'Tax Plan Draft' },
-    { id: 'slack', label: 'Slack' }
+    { id: 'actionitems', label: 'Action Items' }
   ];
 
   /* A couple of routing calls are exact rules, not judgment calls — cheaper
@@ -3115,12 +3111,14 @@ var QA = (function () {
      match here skips the AI board classifier below entirely.
      - Any card whose text mentions a discovery call prep note goes straight
        to Tax Plan Draft.
-     - On the QTM board specifically, a card whose text is itself an action-
-       /pending-items list files directly into the Action Items column
-       instead of Inbox; anything else on QTM stays in the default column. */
+     - Any card whose text itself reads as an action-/pending-items list
+       goes straight to the Action Items board — checked after the
+       discovery-call rule, since that one is the rarer, more specific
+       match and should win if a card's text happens to mention both. */
   function keywordBoardOverride(fields) {
     const hay = [fields.context, fields.title, fields.body].filter(Boolean).join(' ').toLowerCase();
     if (/discovery call prep notes?/.test(hay)) return 'taxplan';
+    if (/\b(action items?|pending items?)\b/.test(hay)) return 'actionitems';
     return null;
   }
 
@@ -3468,9 +3466,13 @@ var QA = (function () {
         const dk = hash(key + '|' + normalize(t.ask).toLowerCase());
         if (filedSet.has(dk)) continue;
         filedSet.add(dk);
+        /* No board passed — Slack tasks used to have a dedicated board of
+           their own, retired since; they go through the same
+           keyword/AI routing as everything else now, same as a Trello
+           tag would. */
         await fileCard({
           title: (t.who || 'Someone') + ' messaged you on Slack',
-          body: t.ask, context: channelName, url: read.url, board: 'slack'
+          body: t.ask, context: channelName, url: read.url
         });
       }
     }
@@ -4827,7 +4829,7 @@ var QA = (function () {
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
-    markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow,
+    markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow, ME,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,
     LEDGER_STATES, LEDGER_PROMPT, ledgerLines, ledgerFromHistory, cardLedger,

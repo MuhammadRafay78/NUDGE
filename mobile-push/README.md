@@ -146,14 +146,51 @@ Kanban board — same server, same pairing code, so the extension's board
 (**popup/side panel → Board**, or Settings → Mobile notifications → Open
 board) and the phone's board (open the pairing page → **Open board**) show
 the same cards. Columns are fixed: **Inbox → Doing → Action Items → Done**.
-Move a card with its dropdown; type into "Start a card…" to add one by hand
-(lands straight in Doing) for something you're working on that didn't come
-from a notification.
+Cards are also grouped onto boards — **Main / QTM / Tax Plan Draft / Action
+Items** — picked automatically when a card is filed; switch between them
+with the tabs above the columns. Move a card with its dropdowns, or drag it
+— onto another column, or straight onto a different board's tab. The sort
+control next to search reorders cards within each column, by due date
+(soonest and overdue first) or by when they were added (newest first).
+Type into "Start a card…" to add one by hand (lands straight in Doing) for
+something you're working on that didn't come from a notification.
 
 The board needs nothing beyond what pairing already set up — no extra
 config — but it does require Settings → Mobile notifications to have a
 server address and pairing code filled in, even if the phone-push toggle
 itself is off.
+
+### Sharing the board with another laptop (or any browser)
+
+`board.html` also accepts the pairing code as a `?code=` URL parameter,
+so it doesn't need the phone's full install/notification-permission flow
+to be viewed elsewhere — Settings → Mobile notifications → **Copy board
+link** builds `<server>/board.html?code=<code>` and copies it. Open that
+link in any browser and it shows the same board immediately; the code is
+remembered there afterward, so the plain `/board.html` link keeps working
+on that device too.
+
+### Trello comments on the shareable board
+
+By default, a card opened from that link only shows the one snippet
+Nudge stored on it when it was filed — this page has no Trello session of
+its own (it isn't the extension, so it can't read trello.com's cookies),
+so there's nothing more it can fetch on its own. Setting `TRELLO_API_KEY`
+/ `TRELLO_TOKEN` lets the *server* fetch a card's full comment thread on
+its behalf instead:
+
+1. Get an API key at [trello.com/app-key](https://trello.com/app-key)
+   (while logged into Trello) — that page also shows your key.
+2. Generate a **read-only** token by visiting (with that key filled in):
+   `https://trello.com/1/authorize?expiration=never&scope=read&response_type=token&key=YOUR_KEY&name=Nudge`
+   — click **Allow**, and it shows the token on the next page.
+3. Set both as `TRELLO_API_KEY` / `TRELLO_TOKEN` — in `.env` for Option A,
+   or `npx wrangler secret put TRELLO_API_KEY` / `TRELLO_TOKEN` for Option B.
+
+`scope=read` means this token can only ever read — it can't post a
+comment, react, or move a card, on this or anything else in your Trello
+account. Leave both unset to skip this entirely; the board just keeps
+showing the stored snippet, same as before this existed.
 
 ## API
 
@@ -167,6 +204,7 @@ itself is off.
 | `POST /api/cards` | `{ code, title, body?, url?, column? }` | Adds a card (defaults to Inbox) |
 | `PATCH /api/cards/:id` | `{ code, column }` | Moves a card to `inbox`\|`doing`\|`action`\|`done` |
 | `DELETE /api/cards/:id` | `{ code }` | Removes a card |
+| `GET /api/trello-card?cardId=` | — | A card's full comment thread from Trello — 501 if `TRELLO_API_KEY`/`TRELLO_TOKEN` aren't set |
 
 `code` is an 8-character pairing secret (`newCode()` in `server.js`) — anyone
 who has it can push notifications to that phone, so treat it like a password
