@@ -174,17 +174,41 @@ function itemHtml(card) {
    A tile only ever showed a 3-line preview with no way to see the rest —
    tapping it now opens the full card. Same dense-note formatting as the
    extension's board: a bold line ending in ":" is a section header, any
-   other bold-only line or a " - " item is a bullet under it, everything
-   else is a plain line. Nothing here can post back to Trello — this phone
-   has no Trello session — so the way to actually reply is the "Trello ↗"
-   link, which opens the real card. */
+   other bold-only line or a " - " item is a bullet under it, a run-on
+   paragraph splits onto separate lines per sentence, and a "_..._" span
+   loses its literal underscores rather than showing them raw. Nothing
+   here can post back to Trello, or read anything beyond the one snippet
+   already stored on this card — this page has no Trello session (it
+   isn't the extension, so it can't read trello.com's cookies or make an
+   authenticated request to it) — so the way to see or do anything else
+   with this card is the "Trello ↗" link, which opens the real thing in
+   whatever browser you're actually logged into Trello with. */
 
 function formatBodyHtml(text) {
   if (!text) return '<div class="empty">Nothing else on this card.</div>';
   let t = esc(text);
+  /* A missing space after a sentence-ending period ("...on Canopy.We also
+     have...") is a common hand-typing slip and otherwise blocks the
+     sentence-split below from ever seeing a boundary there. Skipped right
+     after a single capital letter so a tight abbreviation like "U.S."
+     isn't pried open into "U. S." */
+  t = t.replace(/(?<!\b[A-Z])\.(?=[A-Z])/g, '. ');
+  /* Trello's own comment box treats an underscore-wrapped word or phrase
+     as italic, but recovering that pairing reliably falls apart once a
+     sentence inside the span gets split onto its own line below — so
+     this just drops the delimiter-shaped underscore rather than showing
+     it as literal clutter. A mid-word underscore like "@some_user" is
+     left alone. */
+  t = t.replace(/(?<!\w)_|_(?!\w)/g, '');
   t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   t = t.replace(/(.)(<b>)/g, '$1\n$2');
   t = t.replace(/ - (?=\S)/g, '\n- ');
+  /* Plain prose with no markdown at all still reads as one wall of text if
+     several sentences are run together with no paragraph breaks — split
+     those onto their own line too. Skipped right after a title or
+     initial ("Mr.", "U.S.") so "Reach out to Mr. Smith" doesn't get cut
+     in half. */
+  t = t.replace(/(?<!\b(?:Mr|Mrs|Ms|Dr|Jr|Sr|vs|etc|e\.g|i\.e|[A-Z]))([.!?])\s+(?=[A-Z<])/g, '$1\n');
   const lines = t.split('\n').map((line) => line.trim().replace(/\s*-\s*$/, '')).filter(Boolean);
   if (!lines.length) return '<div class="empty">Nothing else on this card.</div>';
 
