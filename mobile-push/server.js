@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
-const COLUMNS = ['inbox', 'doing', 'action', 'done'];
+const COLUMNS = ['inbox', 'doing', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 
 /* excludes 0/O/1/I/L so a code read aloud or copied by hand isn't ambiguous */

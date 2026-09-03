@@ -1522,6 +1522,47 @@ var QA = (function () {
     return inTrelloTab(fetchCardWhole, [cardId], true);   // opening a card is a deliberate click
   }
 
+  /* Search-only, never rendered: name + description + every checklist's own
+     name and item names + the full comment thread, concatenated into one
+     blob. This is what the board's Recategorize button tests against —
+     the locally-stored title/context/body snippet alone misses a card
+     whose only "action items"/"pending items" text lives in its
+     description, a checklist, or a comment that came after the snippet was
+     captured. Keeping this separate from fetchCardWhole above means the
+     "Open card" panel still shows comments only, per what he actually
+     wants displayed — this is purely for the keyword test. Same "needs an
+     open Trello tab" constraint as the other card-scoped lookups above.
+     Injected, so it must reference nothing outside itself. */
+  function fetchCardSearchText(cardId) {
+    return (async () => {
+      try {
+        const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) +
+          '?fields=name,desc' +
+          '&checklists=all&checklist_fields=name&checkItem_fields=name' +
+          '&actions=commentCard&actions_limit=1000',
+          { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (!res.ok) return { ok: false, status: res.status };
+        const j = await res.json();
+        const parts = [j.name || '', j.desc || ''];
+        (Array.isArray(j.checklists) ? j.checklists : []).forEach(function (cl) {
+          parts.push(cl.name || '');
+          (cl.checkItems || []).forEach(function (it) { parts.push(it.name || ''); });
+        });
+        (Array.isArray(j.actions) ? j.actions : [])
+          .filter(function (a) { return a && a.type === 'commentCard'; })
+          .forEach(function (a) { parts.push((a.data && a.data.text) || ''); });
+        return { ok: true, text: parts.join(' ') };
+      } catch (e) {
+        return { ok: false, error: String((e && e.message) || e) };
+      }
+    })();
+  }
+
+  async function cardSearchTextFor(cardId) {
+    if (!cardId) return { ok: false, error: 'no card' };
+    return inTrelloTab(fetchCardSearchText, [cardId], true);
+  }
+
   async function reactToMention(item, reaction) {
     const r = typeof reaction === 'string'
       ? REACTIONS.filter(function (x) { return x.emoji === reaction || x.shortName === reaction; })[0]
@@ -3080,14 +3121,19 @@ var QA = (function () {
      the same cards. Requires Settings > Mobile notifications to be filled
      in even if push itself is switched off. */
 
+  /* Just three — "needs a decision, a reply, or is blocked on someone
+     else" used to be its own column here, but that's exactly what the
+     Action Items board is for now, so keeping a same-named column on every
+     board too was just the same grouping done twice. A card stored with
+     the old 'action' column id (from before this changed) falls back to
+     Doing — see cardColumn in board.js and mobile-push/public/board.js. */
   const BOARD_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
-    { id: 'action', label: 'Action Items' },
     { id: 'done', label: 'Done' }
   ];
 
-  /* Four boards sharing the same four columns above — a card lives on
+  /* Four boards sharing the same three columns above — a card lives on
      exactly one. "Main" is everything else: one-off client asks, replies,
      deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself. "Tax
      Plan Draft" is a fixed rule, not an AI guess — see
@@ -3115,15 +3161,13 @@ var QA = (function () {
        goes straight to the Action Items board — checked after the
        discovery-call rule, since that one is the rarer, more specific
        match and should win if a card's text happens to mention both. */
+  const ACTION_ITEMS_RE = /\b(action items?|pending items?)\b/i;
+
   function keywordBoardOverride(fields) {
     const hay = [fields.context, fields.title, fields.body].filter(Boolean).join(' ').toLowerCase();
     if (/discovery call prep notes?/.test(hay)) return 'taxplan';
-    if (/\b(action items?|pending items?)\b/.test(hay)) return 'actionitems';
+    if (ACTION_ITEMS_RE.test(hay)) return 'actionitems';
     return null;
-  }
-
-  function qtmIsActionItems(fields) {
-    return /\b(action items?|pending items?)\b/i.test(fields.body || '');
   }
 
   const BOARD_CLASSIFY_SYSTEM = [
@@ -3217,16 +3261,13 @@ var QA = (function () {
      never block the caller or throw, same spirit as pushToPhone. Decides
      the board itself (unless the caller already knows — the board's own
      "Board" dropdown always passes one), so neither the background poll
-     nor the popup's "+ Board" button has to remember to. A card that lands
-     on QTM and is itself an action-/pending-items list also skips Inbox
-     and files straight into Action Items. */
+     nor the popup's "+ Board" button has to remember to. */
   async function fileCard(fields) {
     try {
       const f = Object.assign({ column: 'inbox' }, fields);
       if (!f.board) {
         f.board = keywordBoardOverride(f) || (await classifyCardBoard(f)).board;
       }
-      if (f.board === 'qtm' && qtmIsActionItems(f)) f.column = 'action';
 
       /* A fresh tag on a card that already has a board card — most often one
          sitting in Done because it was dealt with before — used to always
@@ -3234,7 +3275,7 @@ var QA = (function () {
          again, so a re-tag on already-finished work never visibly came back
          to Inbox. Reuse the existing card instead: if it was Done, that's a
          genuine reopen (new ask, back in the queue); if it's still active
-         (inbox/doing/action) leave its column alone rather than yanking it
+         (inbox/doing) leave its column alone rather than yanking it
          out of Doing, but still refresh the text and notifId so marking it
          handled later points at this newest mention, not a stale one. */
       if (f.cardId) {
@@ -4811,7 +4852,7 @@ var QA = (function () {
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, cardSearchTextFor, ACTION_ITEMS_RE, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,

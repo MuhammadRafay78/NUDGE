@@ -4,7 +4,7 @@ import webPush from 'web-push';
 const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 
-const COLUMNS = ['inbox', 'doing', 'action', 'done'];
+const COLUMNS = ['inbox', 'doing', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const boardKey = (code) => 'board:' + code;
 
