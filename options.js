@@ -365,6 +365,26 @@ document.getElementById('pushBoard').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('board.html') });
 });
 
+/* The extension's own board (above) only ever shows up in this browser
+   profile — this is the same board, served by the mobile-push server
+   itself, reachable from anywhere with the pairing code baked into the
+   link so there's nothing to set up on the other end. */
+document.getElementById('pushBoardLink').addEventListener('click', async () => {
+  const server = pUrl.value.trim().replace(/\/+$/, '');
+  const code = pCode.value.trim().toUpperCase();
+  if (!server || !code) {
+    pState.textContent = ' Fill in the server address and pairing code first.';
+    return;
+  }
+  const link = server + '/board.html?code=' + encodeURIComponent(code);
+  try {
+    await navigator.clipboard.writeText(link);
+    pState.textContent = ' Board link copied — open it on the other laptop.';
+  } catch (e) {
+    pState.textContent = ' Could not copy automatically — here it is: ' + link;
+  }
+});
+
 document.getElementById('pushTest').addEventListener('click', () => {
   pState.textContent = ' Sending…';
   tell({ type: 'testPush' }, (r) => {

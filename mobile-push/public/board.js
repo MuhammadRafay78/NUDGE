@@ -55,7 +55,15 @@ function dueText(card) {
   return card.due || '';
 }
 
-const code = localStorage.getItem('nudgeCode');
+/* A phone gets its code from the full install/pairing flow in app.js — a
+   laptop or any other browser just needs a link with the code already in
+   it (see "Copy board link" in the extension's Settings), so this page
+   accepts ?code= directly rather than requiring that flow at all. Saved to
+   localStorage too, so the plain /board.html link keeps working here
+   afterward without the query string. */
+const urlCode = new URLSearchParams(location.search).get('code');
+if (urlCode && urlCode.trim()) localStorage.setItem('nudgeCode', urlCode.trim().toUpperCase());
+const code = (urlCode && urlCode.trim().toUpperCase()) || localStorage.getItem('nudgeCode');
 const boardEl = document.getElementById('board');
 const boardTabsEl = document.getElementById('boardTabs');
 const statusEl = document.getElementById('status');
