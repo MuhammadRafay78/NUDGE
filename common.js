@@ -1486,7 +1486,13 @@ var QA = (function () {
         const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) +
           '?fields=name,desc,due,dueComplete' +
           '&checklists=all&checklist_fields=name&checkItem_fields=name,state' +
-          '&actions=commentCard&actions_limit=50&action_memberCreator_fields=username,fullName',
+          /* 1000 is Trello's own documented ceiling for actions_limit — a
+             card with more real comments than that is not realistic here,
+             so this is "get everything" rather than a real cap. The old
+             limit of 50 quietly dropped anything older once a thread grew
+             past that, with nothing telling the reader comments were
+             missing. */
+          '&actions=commentCard&actions_limit=1000&action_memberCreator_fields=username,fullName',
           { credentials: 'same-origin', headers: { Accept: 'application/json' } });
         if (!res.ok) return { ok: false, status: res.status };
         const j = await res.json();

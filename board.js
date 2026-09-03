@@ -284,13 +284,44 @@ function itemHtml(card, terms) {
   );
 }
 
-/* ---------- "Open card" modal: just the comments, nothing else ----------
+/* ---------- "Open card" modal ----------
    Trello's own card-open behavior — click a card, it opens on top of the
-   board, you read the thread and reply, close it, you're right back where
-   you were. No description, no checklist summary; those turned out to be
-   clutter nobody asked for. Only one modal exists at a time (there's only
-   ever one open card), which is also what lets the reply composer be a
-   single persistent piece of markup instead of one per card. */
+   board, you read it and reply, close it, you're right back where you
+   were. Only one modal exists at a time (there's only ever one open
+   card), which is also what lets the reply composer be a single
+   persistent piece of markup instead of one per card.
+
+   Description and checklist were left out at first as clutter nobody
+   asked for — but some cards track their pending items as an actual
+   Trello checklist rather than typing them into a comment, and
+   cardWholeFor() already fetches both alongside the comment thread, so
+   leaving them off meant part of "the whole card" never made it to the
+   screen. Shown above the thread now, same dense-note formatting as a
+   comment gets. */
+
+function descriptionHtml(desc) {
+  if (!desc) return '';
+  return (
+    '<div class="modal-item modal-desc">' +
+      '<div class="hist-meta"><b>Description</b></div>' +
+      '<div class="hist-text">' + formatCommentHtml(desc) + '</div>' +
+    '</div>'
+  );
+}
+
+function checklistHtml(items) {
+  if (!items || !items.length) return '';
+  return (
+    '<div class="modal-item modal-checklist">' +
+      '<div class="hist-meta"><b>Checklist</b></div>' +
+      items.map((it) =>
+        '<div class="chk-item' + (it.done ? ' done' : '') + '">' +
+          (it.done ? '&#9745;' : '&#9744;') + ' ' + esc(it.name) +
+        '</div>'
+      ).join('') +
+    '</div>'
+  );
+}
 
 function modalCommentHtml(c, i) {
   const when = c.at ? QA.ago(c.at) : '';
@@ -356,9 +387,12 @@ function modalHtml(card) {
     body = '<div class="modal-status bad">&#9888; ' + esc(cache.error || 'Could not load this card.') + '</div>';
   } else {
     const comments = cache.comments || [];
-    body = comments.length
-      ? comments.map(modalCommentHtml).join('')
-      : '<div class="modal-status">No comments yet on this card.</div>';
+    /* Description and checklist first, same order Trello's own card view
+       leads with, then the thread — most-recent-first, same as before. */
+    body = descriptionHtml(cache.desc) + checklistHtml(cache.checklist) +
+      (comments.length
+        ? comments.map(modalCommentHtml).join('')
+        : '<div class="modal-status">No comments yet on this card.</div>');
   }
 
   return (
@@ -412,7 +446,18 @@ async function loadHistory(id, focusComposer) {
   if (!card || !card.cardId) return;
   const res = await QA.cardWholeFor(card.cardId);
   if (res && res.ok) {
-    historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+    /* cardWholeFor already fetches the card's description and checklist
+       alongside its comments — "the whole card", not just the thread — so
+       keep those here too instead of discarding everything but comments,
+       the way this used to. Whatever pending-items list a card is tracking
+       as an actual Trello checklist (rather than typed into a comment)
+       only ever existed in the response, never on screen. */
+    historyCache[id] = {
+      ok: true,
+      desc: res.desc || '',
+      checklist: res.checklist || [],
+      comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0))
+    };
   } else {
     historyCache[id] = {
       ok: false,
