@@ -85,6 +85,24 @@
 
   .status { color: var(--muted); font-size: 13px; padding: 0 16px; }
 
+  /* Phone-first: columns snap-scroll horizontally at a narrow fixed
+     width, and the search box just runs full-bleed since a phone screen
+     is narrow anyway. Neither holds up on a laptop opened via the
+     shareable board link — the fixed 340px columns leave a growing dead
+     zone on the right instead of using the space, and a search box
+     stretched to the raw viewport width looks broken next to them. Above
+     a breakpoint wide enough to show all four columns at once, drop the
+     scroll/snap and let each grow to fill an even share of the row
+     instead, and cap the whole page at a sane reading width so it isn't
+     glued to the left edge of a wide screen. */
+  @media (min-width: 860px) {
+    header, .board-tabs, .searchRow, .status, .board {
+      max-width: 1400px; margin-left: auto; margin-right: auto;
+    }
+    .board { overflow-x: visible; scroll-snap-type: none; }
+    .col { flex: 1 1 0; max-width: none; min-width: 0; }
+  }
+
   /* ---- "Open card" — the full card, tapped open from its tile ----
      `vh` on a phone browser is sized against the tallest the viewport can
      get (address bar collapsed), not what's actually on screen right now —
