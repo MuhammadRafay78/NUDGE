@@ -140,8 +140,12 @@
     }
     /* A comment that mentions him is exactly where an action item tends to
        hide in a longer thread — flagged so it doesn't take reading every
-       reply to spot. */
-    .modal-item.mentioned { border-color: var(--accent); background: var(--accent-soft); }
+       reply to spot. Marks just the handle/name itself, not the whole
+       bubble around it. */
+    .modal-item mark.mention-hit {
+      background: var(--accent-soft); color: var(--accent); font-weight: 650;
+      border-radius: 3px; padding: 0 2px;
+    }
     .modal-item .hist-meta { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
     .modal-item .hist-meta b { color: var(--fg); font-weight: 650; }
     .modal-item .hist-text { font-size: 13px; color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }

@@ -272,27 +272,34 @@ function formatBodyHtml(text) {
   }).join('');
 }
 
+function escapeRe(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /* A card's own NOTE is already known to mention him (that's the whole
    reason it was filed) — but once the full thread is showing, later
    replies from other people are exactly where a "can you also do X" or
-   an actual action item tends to hide. Highlighted so it doesn't take
-   reading every line to find. */
-function mentionsMe(text) {
-  const t = (text || '').toLowerCase();
-  return ME.some((n) => {
-    const nn = n.toLowerCase();
-    return t.indexOf(nn) !== -1;
-  });
+   an actual action item tends to hide. Marking the whole comment bubble
+   for that read as a wall of orange with no indication of what actually
+   triggered it, so this instead wraps just the matched handle/name itself
+   — safe to run on already-built HTML here since the only markup this
+   text ever carries is <div>/<b> around escaped plain text, nothing with
+   an attribute value that could accidentally match. Names are tried
+   longest-first so "@rafay10" wins over the "@rafay" it starts with,
+   rather than only the prefix getting marked. */
+function highlightMentions(html) {
+  const toks = ME.slice().sort((a, b) => b.length - a.length);
+  const re = new RegExp('(' + toks.map(escapeRe).join('|') + ')', 'gi');
+  return html.replace(re, '<mark class="mention-hit">$1</mark>');
 }
 
 function modalCommentHtml(c) {
   const when = c.at ? ago(c.at) : '';
   const who = c.byName || c.by || 'Someone';
-  const mentioned = mentionsMe(c.text);
   return (
-    '<div class="modal-item' + (mentioned ? ' mentioned' : '') + '">' +
+    '<div class="modal-item">' +
       '<div class="meta2"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
-      '<div class="hist-text">' + formatBodyHtml(c.text) + '</div>' +
+      '<div class="hist-text">' + highlightMentions(formatBodyHtml(c.text)) + '</div>' +
     '</div>'
   );
 }

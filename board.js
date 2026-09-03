@@ -321,18 +321,27 @@ function itemHtml(card, terms) {
    ever one open card), which is also what lets the reply composer be a
    single persistent piece of markup instead of one per card. */
 
+function escapeRe(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /* A card's own NOTE is already known to mention him (that's the whole
    reason it was filed) — but once the full thread is showing, later
-   replies from other people are exactly where a "can you also do X"
-   or an actual action item tends to hide. Highlighted the same way for
-   any comment that mentions him, so it doesn't take reading every line
-   to find. */
-function mentionsMe(text, names) {
-  const t = (text || '').toLowerCase();
-  return (names || []).some((n) => {
-    const nn = String(n || '').trim().toLowerCase();
-    return nn && t.indexOf(nn) !== -1;
-  });
+   replies from other people are exactly where a "can you also do X" or
+   an actual action item tends to hide. Marking the whole comment bubble
+   for that read as a wall of orange with no indication of what actually
+   triggered it, so this instead wraps just the matched handle/name itself
+   — safe to run on already-built HTML here since the only markup this
+   text ever carries is <div>/<b> around escaped plain text, nothing with
+   an attribute value that could accidentally match. Names are tried
+   longest-first so "@rafay10" wins over the "@rafay" it starts with,
+   rather than only the prefix getting marked. */
+function highlightMentions(html, names) {
+  const toks = (names || []).map((n) => String(n || '').trim()).filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  if (!toks.length) return html;
+  const re = new RegExp('(' + toks.map(escapeRe).join('|') + ')', 'gi');
+  return html.replace(re, '<mark class="mention-hit">$1</mark>');
 }
 
 function modalCommentHtml(c, i) {
@@ -342,14 +351,13 @@ function modalCommentHtml(c, i) {
     '<button class="emo hist-emo" data-emoji="' + esc(r.emoji) + '" title="' + esc(r.label) + '">' + r.emoji + '</button>'
   ).join('');
   const { rest, image } = extractImageMarkdown(c.text);
-  const textHtml = rest ? '<div class="hist-text">' + formatCommentHtml(rest) + '</div>' : '';
+  const textHtml = rest ? '<div class="hist-text">' + highlightMentions(formatCommentHtml(rest), QA.ME) + '</div>' : '';
   const imgHtml = image
     ? '<a href="' + esc(image.url) + '" target="_blank" rel="noreferrer">' +
       '<img class="hist-img" src="' + esc(image.url) + '" alt="' + esc(image.alt) + '" loading="lazy"></a>'
     : '';
-  const mentioned = mentionsMe(c.text, QA.ME);
   return (
-    '<div class="modal-item' + (mentioned ? ' mentioned' : '') + '" data-idx="' + i + '">' +
+    '<div class="modal-item" data-idx="' + i + '">' +
       '<div class="hist-meta"><b>' + esc(who) + '</b>' + (when ? ' &middot; ' + esc(when) : '') + '</div>' +
       textHtml + imgHtml +
       '<div class="hist-acts">' +
