@@ -72,6 +72,13 @@ function cardBoard(c) {
   return (c.board && QA.BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
+/* A card still carrying the old 'action' column (from before Action Items
+   became its own board and that column was retired) falls back to Doing —
+   it was "still active", same spirit as cardBoard's fallback above. */
+function cardColumn(c) {
+  return (c.column && QA.BOARD_COLUMNS.some((col) => col.id === c.column)) ? c.column : 'doing';
+}
+
 /* "3 days overdue" baked into text at filing time freezes there forever —
    it's a fact about a gap between two dates, not a fact about the card, so
    it has to be recomputed against *now* every time it's shown rather than
@@ -260,7 +267,7 @@ function itemHtml(card, terms) {
   const byline = card.context ? card.title : '';
   const due = dueText(card);
   const moveOptions = QA.BOARD_COLUMNS.map((c) =>
-    '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
+    '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const boardOptions = QA.BOARDS.map((b) =>
     '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
@@ -505,8 +512,8 @@ function render(cards) {
   cardSearchClear.hidden = !searchQuery;
 
   boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
-    const total = onBoard.filter((c) => c.column === col.id);
-    const items = sortCards(visible.filter((c) => c.column === col.id));
+    const total = onBoard.filter((c) => cardColumn(c) === col.id);
+    const items = sortCards(visible.filter((c) => cardColumn(c) === col.id));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
@@ -1087,24 +1094,34 @@ backfillBtn.addEventListener('click', async () => {
    in common.js) only ever applies to a card as it's being filed — anything
    filed before that rule existed, or filed onto Main/QTM by the AI
    classifier before this keyword check ran first, is stuck wherever it
-   landed. This walks what's already loaded and moves anything that reads
-   as an action-/pending-items list but isn't on that board yet. Purely a
-   client-side text scan — no Trello lookup, so no tab needed. ---------- */
+   landed. This walks every card not already on that board and tests it: a
+   cheap check first against the locally-stored title/context/body snippet,
+   then — since the phrase can just as easily live in the card's
+   description, a checklist, or a comment the snippet never captured — a
+   fuller Trello lookup (QA.cardSearchTextFor, needs an open Trello tab) for
+   anything the cheap check misses but that has a card to look up. ---------- */
 
 recatBtn.addEventListener('click', async () => {
-  const targets = Object.values(cardsById).filter((c) => {
-    if (cardBoard(c) === 'actionitems') return false;
-    const hay = [c.context, c.title, c.body].filter(Boolean).join(' ').toLowerCase();
-    return /\b(action items?|pending items?)\b/.test(hay);
-  });
-  if (!targets.length) {
-    statusEl.textContent = 'Nothing to recategorize — every card that reads as action/pending items is already on that board.';
+  const candidates = Object.values(cardsById).filter((c) => cardBoard(c) !== 'actionitems');
+  if (!candidates.length) {
+    statusEl.textContent = 'Nothing to recategorize — every card is already sorted.';
     return;
   }
   recatBtn.disabled = true;
   let done = 0;
-  for (const card of targets) {
-    recatBtn.textContent = 'Recategorizing ' + (done + 1) + ' of ' + targets.length + '…';
+  let checked = 0;
+  let failed = 0;
+  for (const card of candidates) {
+    checked++;
+    recatBtn.textContent = 'Checking ' + checked + ' of ' + candidates.length + '…';
+    const localHay = [card.context, card.title, card.body].filter(Boolean).join(' ').toLowerCase();
+    let matched = QA.ACTION_ITEMS_RE.test(localHay);
+    if (!matched && card.cardId) {
+      const got = await QA.cardSearchTextFor(card.cardId);
+      if (got && got.ok) matched = QA.ACTION_ITEMS_RE.test(got.text);
+      else failed++;
+    }
+    if (!matched) continue;
     try {
       await QA.updateCard(card.id, { board: 'actionitems' });
       done++;
@@ -1113,7 +1130,8 @@ recatBtn.addEventListener('click', async () => {
   recatBtn.textContent = 'Recategorize';
   recatBtn.disabled = false;
   await load();
-  statusEl.textContent = 'Moved ' + done + ' of ' + targets.length + ' card(s) to Action Items.';
+  statusEl.textContent = 'Moved ' + done + ' card(s) to Action Items' +
+    (failed ? ' (' + failed + ' could not be fully checked — needs an open Trello tab)' : '') + '.';
 });
 
 /* ---------- daily update: one AI-drafted message of which cards are

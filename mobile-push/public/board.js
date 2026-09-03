@@ -1,11 +1,14 @@
+/* Just three — "needs a decision, a reply, or is blocked on someone else"
+   used to be its own column here too, but that's exactly what the Action
+   Items board is for now, so a same-named column on every board was just
+   the same grouping done twice. */
 const COLUMNS = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'doing', label: 'Doing' },
-  { id: 'action', label: 'Action Items' },
   { id: 'done', label: 'Done' }
 ];
 
-/* Boards sharing the same four columns above — Main for one-off client
+/* Boards sharing the same three columns above — Main for one-off client
    asks, QTM for quarterly-tax-meeting prep/follow-up (including its own
    data upkeep), Tax Plan Draft for anything mentioning a discovery call
    prep note, Action Items for anything that itself reads as an action-/
@@ -25,6 +28,13 @@ const BOARDS = [
    instead of vanishing from every tab. */
 function cardBoard(c) {
   return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
+}
+
+/* A card still carrying the old 'action' column (from before Action Items
+   became its own board and that column was retired) falls back to Doing —
+   it was "still active", same spirit as cardBoard's fallback above. */
+function cardColumn(c) {
+  return (c.column && COLUMNS.some((col) => col.id === c.column)) ? c.column : 'doing';
 }
 
 /* Same list as ME in the extension's common.js — duplicated rather than
@@ -175,7 +185,7 @@ async function fetchTrelloCard(cardId) {
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = COLUMNS.map((c) =>
-    '<option value="' + c.id + '"' + (c.id === card.column ? ' selected' : '') + '>' + c.label + '</option>'
+    '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const boardOptions = BOARDS.map((b) =>
     '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
@@ -410,8 +420,8 @@ function render(cards) {
   const visible = terms.length ? onBoard.filter((c) => matchesSearch(c, terms)) : onBoard;
 
   boardEl.innerHTML = COLUMNS.map((col) => {
-    const total = onBoard.filter((c) => c.column === col.id);
-    const items = sortCards(visible.filter((c) => c.column === col.id));
+    const total = onBoard.filter((c) => cardColumn(c) === col.id);
+    const items = sortCards(visible.filter((c) => cardColumn(c) === col.id));
     return (
       '<div class="col" data-col="' + col.id + '">' +
         '<h2>' + col.label + ' <span class="n">' + (terms.length ? items.length + ' / ' + total.length : total.length) + '</span></h2>' +
