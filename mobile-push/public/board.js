@@ -17,8 +17,8 @@ const COLUMNS = [
 const ACTION_ITEMS_COLUMNS = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'doing', label: 'Doing' },
-  { id: 'waiting', label: 'Waiting for client info' },
-  { id: 'waitingteam', label: 'Waiting for team to respond' },
+  { id: 'waiting', label: 'Awaiting client' },
+  { id: 'waitingteam', label: 'Awaiting team' },
   { id: 'done', label: 'Done' }
 ];
 function columnsForBoard(boardId) {

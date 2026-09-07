@@ -47,8 +47,6 @@ function mentionToken(ta) {
   return { q: m[1], start: (ta.selectionStart || 0) - m[1].length - 1 };
 }
 
-const LONG_BODY = 140;   // roughly where a 3-line clamp starts hiding text
-const expanded = new Set();   // card ids currently showing full text, survives a refresh
 let dragging = false;         // suppress auto-refresh mid-drag so the drop target doesn't vanish
 let cardsById = {};            // last-rendered cards
 let lastCards = [];            // same, as a plain list — re-filtered on every search keystroke
@@ -258,9 +256,6 @@ function itemHtml(card, terms) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open on ' + linkSource + '">' + linkSource + ' &#8599;</a>'
     : '';
-  const body = card.body || '';
-  const long = body.length > LONG_BODY;
-  const isOpen = expanded.has(card.id);
   const canReply = !!card.cardId;
   /* The client/card name is what matters at a glance — lead with it. The
      generic "X tagged you" line is demoted to a byline underneath (or, for a
@@ -288,8 +283,6 @@ function itemHtml(card, terms) {
       '<div class="t" title="' + esc(heading) + '">' + hi(heading, terms) + '</div>' +
       (byline ? '<div class="sub">' + hi(byline, terms) + '</div>' : '') +
       (due ? '<div class="due">' + hi(due, terms) + '</div>' : '') +
-      (body ? '<div class="b' + (isOpen ? '' : ' clamp') + '">' + hi(body, terms) + '</div>' : '') +
-      (long ? '<button class="more">' + (isOpen ? 'Show less' : 'Show more') + '</button>' : '') +
       /* Action pills get their own row so they can wrap on a narrow card
          without ever pulling "when"/delete along with them — those two stay
          paired on a fixed, always-two-item row underneath, so delete never
@@ -704,15 +697,6 @@ boardEl.addEventListener('click', async (e) => {
 
   if (e.target.classList.contains('new-card-save')) {
     await submitNewCard(e.target.closest('.col').dataset.col);
-    return;
-  }
-
-  if (e.target.classList.contains('more')) {
-    const id = e.target.closest('.item').dataset.id;
-    const b = e.target.previousElementSibling;
-    const collapsed = b.classList.toggle('clamp');
-    if (collapsed) expanded.delete(id); else expanded.add(id);
-    e.target.textContent = collapsed ? 'Show more' : 'Show less';
     return;
   }
 
