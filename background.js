@@ -106,11 +106,24 @@ async function fileTagCard(item) {
      tell Trello (and so the popup) it's been dealt with — same "tn:" prefix
      rememberHandled strips elsewhere */
   const notifId = item.hash && item.hash.indexOf('tn:') === 0 ? item.hash.slice(3) : (item.notificationId || '');
-  await QA.fileCard({
+  const filed = await QA.fileCard({
     title: title, body: item.text || '', url: item.href || '',
     context: context, due: due, dueAt: dueAt, dueComplete: dueComplete,
     cardId: item.cardId || '', notifId: notifId, actorUser: item.actorUser || ''
   });
+  /* Same best-effort spirit as the due-date lookup above, for the same
+     reason this exists at all: the shareable board has no Trello session
+     of its own, so unless someone happens to open this card in the
+     extension later, it would otherwise sit showing only this one snippet
+     forever. Fire-and-forget and not awaited — it's not on the critical
+     path for popping the notification or filing the card, and a missing
+     Trello tab (or any other failure) here must never hold up either. */
+  if (filed && filed.ok && filed.card && item.cardId) {
+    const cardRowId = filed.card.id;
+    QA.cardWholeFor(item.cardId, false).then((whole) => {
+      if (whole && whole.ok) return QA.updateCard(cardRowId, { comments: whole.comments || [] });
+    }).catch(() => {});
+  }
 }
 
 async function notifyOne(item) {

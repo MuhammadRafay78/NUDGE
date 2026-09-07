@@ -1517,9 +1517,14 @@ var QA = (function () {
     })();
   }
 
-  async function cardWholeFor(cardId) {
+  /* autoOpen defaults off, same reason as cardDetailsFor above — a fresh
+     tag calls this unattended, on every card, and forcing a Trello tab
+     open for each one would be a lot more disruptive than the due-date
+     lookup that already does this. The board's "Open card" panel, an
+     explicit click, opts in. */
+  async function cardWholeFor(cardId, autoOpen) {
     if (!cardId) return { ok: false, error: 'no card' };
-    return inTrelloTab(fetchCardWhole, [cardId], true);   // opening a card is a deliberate click
+    return inTrelloTab(fetchCardWhole, [cardId], !!autoOpen);
   }
 
   /* Search-only, never rendered: name + description + every checklist's own
@@ -3327,13 +3332,13 @@ var QA = (function () {
             actorUser: f.actorUser || existing.actorUser
           };
           if (existing.column === 'done') patch.column = f.column;
-          await updateCard(existing.id, patch);
-          return { ok: true, reopened: true };
+          const updated = await updateCard(existing.id, patch);
+          return { ok: true, reopened: true, card: updated || existing };
         }
       }
 
-      await createCard(f);
-      return { ok: true };
+      const created = await createCard(f);
+      return { ok: true, card: created };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e) };
     }

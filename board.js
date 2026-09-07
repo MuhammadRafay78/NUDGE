@@ -472,7 +472,7 @@ function closeModal() {
 async function loadHistory(id, focusComposer) {
   const card = cardsById[id];
   if (!card || !card.cardId) return;
-  const res = await QA.cardWholeFor(card.cardId);
+  const res = await QA.cardWholeFor(card.cardId, true);   // opening a card is a deliberate click
   if (res && res.ok) {
     historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
     /* This tab has a live Trello session and just fetched the real thing —
@@ -1066,9 +1066,9 @@ cardSearch.addEventListener('input', () => {
   render(lastCards);
 });
 
-/* ---------- backfill: fill in client name + due date for cards filed
-   before that worked reliably. Needs an open Trello tab, same as the
-   automatic per-notification enrichment. ---------- */
+/* ---------- backfill: fill in client name + due date + a synced comment
+   thread for cards filed before those worked reliably. Needs an open
+   Trello tab, same as the automatic per-notification enrichment. ---------- */
 
 function shortLinkFromUrl(url) {
   const m = /trello\.com\/c\/([^/?#]+)/.exec(url || '');
@@ -1076,16 +1076,18 @@ function shortLinkFromUrl(url) {
 }
 
 backfillBtn.addEventListener('click', async () => {
-  /* two kinds of gap: a card with no Trello link at all (the original
-     reason this button exists), and a card that's properly linked but was
+  /* three kinds of gap: a card with no Trello link at all (the original
+     reason this button exists), a card that's properly linked but was
      filed before dueAt existed — its "N days overdue" text is frozen at
-     whatever it said the day it was filed, so it needs the same re-fetch
-     to start recomputing live. */
+     whatever it said the day it was filed — and a card with no synced
+     comment thread yet (filed before that existed, or before this
+     specific card was ever opened here), which is what leaves the
+     shareable board showing nothing but the old stored snippet for it. */
   const targets = Object.values(cardsById).filter((c) =>
-    (!c.cardId && shortLinkFromUrl(c.url)) || (c.cardId && !c.dueAt)
+    (!c.cardId && shortLinkFromUrl(c.url)) || (c.cardId && (!c.dueAt || !Array.isArray(c.comments)))
   );
   if (!targets.length) {
-    statusEl.textContent = 'Nothing to backfill — every card either has this already or has no Trello card to look up.';
+    statusEl.textContent = 'Nothing to backfill — every card already has this.';
     return;
   }
   backfillBtn.disabled = true;
@@ -1098,13 +1100,18 @@ backfillBtn.addEventListener('click', async () => {
       const got = await QA.cardDetailsFor(shortLink, true);   // explicit click — worth opening a tab for
       if (!got || !got.ok) { failed++; continue; }
       const lab = got.due ? QA.dueLabel(got.due, got.dueComplete) : null;
-      await QA.updateCard(card.id, {
+      const patch = {
         cardId: shortLink,
         context: got.name || card.context || '',
         due: lab ? lab.text : (card.due || ''),
         dueAt: got.due || '',
         dueComplete: !!got.dueComplete
-      });
+      };
+      if (!Array.isArray(card.comments)) {
+        const whole = await QA.cardWholeFor(shortLink, true);
+        if (whole && whole.ok) patch.comments = whole.comments || [];
+      }
+      await QA.updateCard(card.id, patch);
       done++;
     } catch (e) {
       failed++;
