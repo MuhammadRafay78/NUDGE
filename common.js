@@ -3126,17 +3126,40 @@ var QA = (function () {
      Action Items board is for now, so keeping a same-named column on every
      board too was just the same grouping done twice. A card stored with
      the old 'action' column id (from before this changed) falls back to
-     Doing — see cardColumn in board.js and mobile-push/public/board.js. */
+     Doing — see cardColumn in board.js and mobile-push/public/board.js.
+     Action Items gets a fourth column of its own, though: "blocked on
+     someone else's reply" is a distinct state from "not started" (Inbox)
+     or "actively being worked" (Doing), and common enough on that board
+     specifically — its whole reason for existing is client asks waiting on
+     something — to earn its own column rather than living inside Doing.
+     Use columnsForBoard(boardId) to get the right set; BOARD_COLUMNS below
+     is the default for every board except Action Items. */
   const BOARD_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
     { id: 'done', label: 'Done' }
   ];
+  const ACTION_ITEMS_COLUMNS = [
+    { id: 'inbox', label: 'Inbox' },
+    { id: 'doing', label: 'Doing' },
+    { id: 'waiting', label: 'Waiting for info' },
+    { id: 'done', label: 'Done' }
+  ];
+  /* Every column that exists on any board — for code that summarizes cards
+     across boards at once (the daily update draft) rather than rendering
+     one board's own layout, where a per-board column list would silently
+     drop a card sitting in a column that list doesn't know about. Action
+     Items' set already includes the other three, so it doubles as this. */
+  const ALL_COLUMNS = ACTION_ITEMS_COLUMNS;
 
-  /* Four boards sharing the same three columns above — a card lives on
-     exactly one. "Main" is everything else: one-off client asks, replies,
-     deliveries. "QTM" is quarterly-tax-meeting prep/follow-up itself. "Tax
-     Plan Draft" is a fixed rule, not an AI guess — see
+  function columnsForBoard(boardId) {
+    return boardId === 'actionitems' ? ACTION_ITEMS_COLUMNS : BOARD_COLUMNS;
+  }
+
+  /* Four boards sharing columns from columnsForBoard above — a card lives
+     on exactly one. "Main" is everything else: one-off client asks,
+     replies, deliveries. "QTM" is quarterly-tax-meeting prep/follow-up
+     itself. "Tax Plan Draft" is a fixed rule, not an AI guess — see
      keywordBoardOverride. "Action Items" is also a fixed rule — anything
      whose text itself reads as an action-/pending-items list, regardless
      of which client or meeting it's for, so those never get buried on
@@ -3745,7 +3768,7 @@ var QA = (function () {
 
   function buildDailyUpdateContext(cards) {
     const lines = ['TODAY: ' + new Date().toDateString()];
-    BOARD_COLUMNS.forEach(function (col) {
+    ALL_COLUMNS.forEach(function (col) {
       const items = (cards || []).filter(function (c) { return c.column === col.id; });
       if (col.id === 'done') {
         lines.push(col.label.toUpperCase() + ': ' + items.length + ' card(s) — not relevant to today\'s update.');
@@ -4882,7 +4905,7 @@ var QA = (function () {
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     getPush, setPush, pushToPhone,
-    BOARD_COLUMNS, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
+    BOARD_COLUMNS, ACTION_ITEMS_COLUMNS, columnsForBoard, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow, ME,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
     listGeminiModels, geminiModelLabel,

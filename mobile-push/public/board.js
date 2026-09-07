@@ -1,12 +1,27 @@
 /* Just three — "needs a decision, a reply, or is blocked on someone else"
    used to be its own column here too, but that's exactly what the Action
    Items board is for now, so a same-named column on every board was just
-   the same grouping done twice. */
+   the same grouping done twice. Action Items gets a fourth column of its
+   own, though: "blocked on someone else's reply" is a distinct state from
+   "not started" (Inbox) or "actively being worked" (Doing), and common
+   enough on that board specifically — its whole reason for existing is
+   client asks waiting on something — to earn its own column rather than
+   living inside Doing. Same lists as the extension's common.js, duplicated
+   for the same reason as ME below. */
 const COLUMNS = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'doing', label: 'Doing' },
   { id: 'done', label: 'Done' }
 ];
+const ACTION_ITEMS_COLUMNS = [
+  { id: 'inbox', label: 'Inbox' },
+  { id: 'doing', label: 'Doing' },
+  { id: 'waiting', label: 'Waiting for info' },
+  { id: 'done', label: 'Done' }
+];
+function columnsForBoard(boardId) {
+  return boardId === 'actionitems' ? ACTION_ITEMS_COLUMNS : COLUMNS;
+}
 
 /* Boards sharing the same three columns above — Main for one-off client
    asks, QTM for quarterly-tax-meeting prep/follow-up (including its own
@@ -30,11 +45,14 @@ function cardBoard(c) {
   return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
-/* A card still carrying the old 'action' column (from before Action Items
-   became its own board and that column was retired) falls back to Doing —
-   it was "still active", same spirit as cardBoard's fallback above. */
+/* A card whose column doesn't exist on its own board — the old 'action'
+   column (from before Action Items became its own board and that column
+   was retired), or 'waiting' on a card since moved off Action Items,
+   which is the only board with that column — falls back to Doing, "still
+   active", same spirit as cardBoard's fallback above. */
 function cardColumn(c) {
-  return (c.column && COLUMNS.some((col) => col.id === c.column)) ? c.column : 'doing';
+  const cols = columnsForBoard(cardBoard(c));
+  return (c.column && cols.some((col) => col.id === c.column)) ? c.column : 'doing';
 }
 
 /* Same list as ME in the extension's common.js — duplicated rather than
@@ -184,7 +202,7 @@ async function fetchTrelloCard(cardId) {
 
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
-  const options = COLUMNS.map((c) =>
+  const options = columnsForBoard(cardBoard(card)).map((c) =>
     '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const boardOptions = BOARDS.map((b) =>
@@ -448,7 +466,7 @@ function render(cards) {
   const terms = searchTerms(searchQuery);
   const visible = terms.length ? onBoard.filter((c) => matchesSearch(c, terms)) : onBoard;
 
-  boardEl.innerHTML = COLUMNS.map((col) => {
+  boardEl.innerHTML = columnsForBoard(activeBoard).map((col) => {
     const total = onBoard.filter((c) => cardColumn(c) === col.id);
     const items = sortCards(visible.filter((c) => cardColumn(c) === col.id));
     return (

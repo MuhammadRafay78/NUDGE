@@ -72,11 +72,14 @@ function cardBoard(c) {
   return (c.board && QA.BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
-/* A card still carrying the old 'action' column (from before Action Items
-   became its own board and that column was retired) falls back to Doing —
-   it was "still active", same spirit as cardBoard's fallback above. */
+/* A card whose column doesn't exist on its own board — the old 'action'
+   column (from before Action Items became its own board and that column
+   was retired), or 'waiting' on a card since moved off Action Items,
+   which is the only board with that column — falls back to Doing, "still
+   active", same spirit as cardBoard's fallback above. */
 function cardColumn(c) {
-  return (c.column && QA.BOARD_COLUMNS.some((col) => col.id === c.column)) ? c.column : 'doing';
+  const cols = QA.columnsForBoard(cardBoard(c));
+  return (c.column && cols.some((col) => col.id === c.column)) ? c.column : 'doing';
 }
 
 /* "3 days overdue" baked into text at filing time freezes there forever —
@@ -266,7 +269,7 @@ function itemHtml(card, terms) {
   const heading = card.context || card.title;
   const byline = card.context ? card.title : '';
   const due = dueText(card);
-  const moveOptions = QA.BOARD_COLUMNS.map((c) =>
+  const moveOptions = QA.columnsForBoard(cardBoard(card)).map((c) =>
     '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
   const boardOptions = QA.BOARDS.map((b) =>
@@ -533,7 +536,9 @@ function render(cards) {
   const visible = terms.length ? onBoard.filter((c) => matchesSearch(c, terms)) : onBoard;
   cardSearchClear.hidden = !searchQuery;
 
-  boardEl.innerHTML = QA.BOARD_COLUMNS.map((col) => {
+  const columns = QA.columnsForBoard(activeBoard);
+  boardEl.style.setProperty('--board-cols', columns.length);
+  boardEl.innerHTML = columns.map((col) => {
     const total = onBoard.filter((c) => cardColumn(c) === col.id);
     const items = sortCards(visible.filter((c) => cardColumn(c) === col.id));
     return (
