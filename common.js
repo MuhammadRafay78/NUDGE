@@ -1453,6 +1453,34 @@ var QA = (function () {
       });
       return (got && got[0] && got[0].result) || { ok: false, error: 'no result' };
     } catch (e) {
+      /* The tab ensureTrelloTab found can be stale by the time injection
+         actually runs — mid-navigation, sitting on a Trello login/SSO
+         redirect, or put to sleep by Chrome in the background — in which
+         case this throws Chrome's generic "cannot access contents of the
+         page" error, which has nothing to do with the manifest despite
+         what it says. Worth one retry against a genuinely fresh tab before
+         giving up, but only for an explicit action (autoOpen) — the
+         unattended background paths should keep degrading quietly rather
+         than popping a tab open to retry something nobody's watching. */
+      if (autoOpen) {
+        let fresh = null;
+        try {
+          fresh = await chrome.tabs.create({ url: 'https://trello.com/', active: false });
+          if (fresh && fresh.id) await waitForTabLoad(fresh.id);
+        } catch (e2) {
+          fresh = null;
+        }
+        if (fresh && fresh.id) {
+          try {
+            const retry = await chrome.scripting.executeScript({
+              target: { tabId: fresh.id }, world: 'MAIN', func: func, args: args || []
+            });
+            return (retry && retry[0] && retry[0].result) || { ok: false, error: 'no result' };
+          } catch (e2) {
+            return { ok: false, error: String((e2 && e2.message) || e2) };
+          }
+        }
+      }
       return { ok: false, error: String((e && e.message) || e) };
     }
   }
@@ -3132,13 +3160,14 @@ var QA = (function () {
      board too was just the same grouping done twice. A card stored with
      the old 'action' column id (from before this changed) falls back to
      Doing — see cardColumn in board.js and mobile-push/public/board.js.
-     Action Items gets a fourth column of its own, though: "blocked on
-     someone else's reply" is a distinct state from "not started" (Inbox)
-     or "actively being worked" (Doing), and common enough on that board
-     specifically — its whole reason for existing is client asks waiting on
-     something — to earn its own column rather than living inside Doing.
-     Use columnsForBoard(boardId) to get the right set; BOARD_COLUMNS below
-     is the default for every board except Action Items. */
+     Action Items gets two extra columns of its own, though: "blocked on
+     the client" and "blocked on someone on the team" are each a distinct
+     state from "not started" (Inbox) or "actively being worked" (Doing),
+     and common enough on that board specifically — its whole reason for
+     existing is client asks waiting on something — to earn their own
+     columns rather than both living inside Doing undistinguished. Use
+     columnsForBoard(boardId) to get the right set; BOARD_COLUMNS below is
+     the default for every board except Action Items. */
   const BOARD_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
@@ -3147,7 +3176,8 @@ var QA = (function () {
   const ACTION_ITEMS_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
-    { id: 'waiting', label: 'Waiting for info' },
+    { id: 'waiting', label: 'Waiting for client info' },
+    { id: 'waitingteam', label: 'Waiting for team to respond' },
     { id: 'done', label: 'Done' }
   ];
   /* Every column that exists on any board — for code that summarizes cards

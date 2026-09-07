@@ -13,7 +13,7 @@ const BOARD_FILE = path.join(__dirname, 'boards.json');
    falls back to Doing for any card whose column doesn't exist on its own
    current board, so this list stays a flat, board-agnostic allow-list
    rather than needing to know which board a card is on to validate it. */
-const COLUMNS = ['inbox', 'doing', 'waiting', 'done'];
+const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const MAX_COMMENTS = 300;
 

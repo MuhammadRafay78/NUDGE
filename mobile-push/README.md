@@ -146,8 +146,9 @@ Kanban board — same server, same pairing code, so the extension's board
 (**popup/side panel → Board**, or Settings → Mobile notifications → Open
 board) and the phone's board (open the pairing page → **Open board**) show
 the same cards. Columns are fixed: **Inbox → Doing → Done** on every board
-except Action Items, which gets a fourth — **Inbox → Doing → Waiting for
-info → Done** — for a client ask that's blocked on someone else's reply.
+except Action Items, which gets two more — **Inbox → Doing → Waiting for
+client info → Waiting for team to respond → Done** — for a client ask
+that's blocked on someone else's reply, split by who it's waiting on.
 Cards are also grouped onto boards — **Main / QTM / Tax Plan Draft / Action
 Items** — picked automatically when a card is filed; anything that itself
 reads as an action-/pending-items list lands on the Action Items board
