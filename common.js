@@ -1453,6 +1453,34 @@ var QA = (function () {
       });
       return (got && got[0] && got[0].result) || { ok: false, error: 'no result' };
     } catch (e) {
+      /* The tab ensureTrelloTab found can be stale by the time injection
+         actually runs — mid-navigation, sitting on a Trello login/SSO
+         redirect, or put to sleep by Chrome in the background — in which
+         case this throws Chrome's generic "cannot access contents of the
+         page" error, which has nothing to do with the manifest despite
+         what it says. Worth one retry against a genuinely fresh tab before
+         giving up, but only for an explicit action (autoOpen) — the
+         unattended background paths should keep degrading quietly rather
+         than popping a tab open to retry something nobody's watching. */
+      if (autoOpen) {
+        let fresh = null;
+        try {
+          fresh = await chrome.tabs.create({ url: 'https://trello.com/', active: false });
+          if (fresh && fresh.id) await waitForTabLoad(fresh.id);
+        } catch (e2) {
+          fresh = null;
+        }
+        if (fresh && fresh.id) {
+          try {
+            const retry = await chrome.scripting.executeScript({
+              target: { tabId: fresh.id }, world: 'MAIN', func: func, args: args || []
+            });
+            return (retry && retry[0] && retry[0].result) || { ok: false, error: 'no result' };
+          } catch (e2) {
+            return { ok: false, error: String((e2 && e2.message) || e2) };
+          }
+        }
+      }
       return { ok: false, error: String((e && e.message) || e) };
     }
   }
