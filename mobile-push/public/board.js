@@ -1,12 +1,13 @@
 /* Just three — "needs a decision, a reply, or is blocked on someone else"
    used to be its own column here too, but that's exactly what the Action
    Items board is for now, so a same-named column on every board was just
-   the same grouping done twice. Action Items gets a fourth column of its
-   own, though: "blocked on someone else's reply" is a distinct state from
-   "not started" (Inbox) or "actively being worked" (Doing), and common
-   enough on that board specifically — its whole reason for existing is
-   client asks waiting on something — to earn its own column rather than
-   living inside Doing. Same lists as the extension's common.js, duplicated
+   the same grouping done twice. Action Items gets two extra columns of
+   its own, though: "blocked on the client" and "blocked on someone on the
+   team" are each a distinct state from "not started" (Inbox) or "actively
+   being worked" (Doing), and common enough on that board specifically —
+   its whole reason for existing is client asks waiting on something — to
+   earn their own columns rather than both living inside Doing
+   undistinguished. Same lists as the extension's common.js, duplicated
    for the same reason as ME below. */
 const COLUMNS = [
   { id: 'inbox', label: 'Inbox' },
@@ -16,7 +17,8 @@ const COLUMNS = [
 const ACTION_ITEMS_COLUMNS = [
   { id: 'inbox', label: 'Inbox' },
   { id: 'doing', label: 'Doing' },
-  { id: 'waiting', label: 'Waiting for info' },
+  { id: 'waiting', label: 'Waiting for client info' },
+  { id: 'waitingteam', label: 'Waiting for team to respond' },
   { id: 'done', label: 'Done' }
 ];
 function columnsForBoard(boardId) {

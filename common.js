@@ -3132,13 +3132,14 @@ var QA = (function () {
      board too was just the same grouping done twice. A card stored with
      the old 'action' column id (from before this changed) falls back to
      Doing — see cardColumn in board.js and mobile-push/public/board.js.
-     Action Items gets a fourth column of its own, though: "blocked on
-     someone else's reply" is a distinct state from "not started" (Inbox)
-     or "actively being worked" (Doing), and common enough on that board
-     specifically — its whole reason for existing is client asks waiting on
-     something — to earn its own column rather than living inside Doing.
-     Use columnsForBoard(boardId) to get the right set; BOARD_COLUMNS below
-     is the default for every board except Action Items. */
+     Action Items gets two extra columns of its own, though: "blocked on
+     the client" and "blocked on someone on the team" are each a distinct
+     state from "not started" (Inbox) or "actively being worked" (Doing),
+     and common enough on that board specifically — its whole reason for
+     existing is client asks waiting on something — to earn their own
+     columns rather than both living inside Doing undistinguished. Use
+     columnsForBoard(boardId) to get the right set; BOARD_COLUMNS below is
+     the default for every board except Action Items. */
   const BOARD_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
@@ -3147,7 +3148,8 @@ var QA = (function () {
   const ACTION_ITEMS_COLUMNS = [
     { id: 'inbox', label: 'Inbox' },
     { id: 'doing', label: 'Doing' },
-    { id: 'waiting', label: 'Waiting for info' },
+    { id: 'waiting', label: 'Waiting for client info' },
+    { id: 'waitingteam', label: 'Waiting for team to respond' },
     { id: 'done', label: 'Done' }
   ];
   /* Every column that exists on any board — for code that summarizes cards
