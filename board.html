@@ -5,7 +5,11 @@
   <title>Nudge — Board</title>
   <link rel="stylesheet" href="view.css">
   <style>
-    body { width: auto; max-width: 1100px; margin: 0 auto; padding: 26px 20px 60px; }
+    /* 1100px capped every column's width well below what a wide window or
+       side panel actually had to give it — Action Items' 5 columns felt
+       cramped even before its labels got longer. Wider now so the board
+       uses the space it's actually given instead of leaving it unused. */
+    body { width: auto; max-width: 1600px; margin: 0 auto; padding: 26px 20px 60px; }
     h1 { font-size: 20px; margin: 0 0 4px; }
     .lede { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
     .bar2 {
@@ -81,9 +85,6 @@
                  text-overflow: ellipsis; white-space: nowrap; }
     .item .due { display: inline-block; color: var(--accent); background: var(--accent-soft);
                  font-size: 10.5px; font-weight: 650; padding: 2px 7px; border-radius: 5px; margin-bottom: 6px; }
-    .item .b { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .item .b.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
     .item .moves { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
     /* flex:1 1 0 with no floor let these shrink to fit the row no matter
        how long a label got — which just meant the browser silently
