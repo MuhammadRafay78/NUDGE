@@ -182,18 +182,29 @@ Nudge stored on it when it was filed — this page has no Trello session of
 its own (it isn't the extension, so it can't read trello.com's cookies),
 so there's nothing more it can fetch on its own.
 
-The extension does have a Trello session, though, and it already fetches a
-card's full comment thread the moment you open that same card in its own
-**Open card** panel (popup/side panel → Board) — so it hands a copy to the
-server right then, and the shareable board just shows that. No setup, no
-credentials: open a card once in the extension and it's there for the
-shareable link too, kept fresh every time you reopen it there. The catch
-is it only works for a card *someone has opened in the extension first* —
-nothing to hand over otherwise.
+The extension does have a Trello session, though, so it does this syncing
+itself, automatically, in two ways — no Trello API key needed for either:
 
-For a card nobody's opened yet, setting `TRELLO_API_KEY` / `TRELLO_TOKEN`
-lets the *server* fetch its comment thread directly instead, same as the
-extension-synced path but without needing the extension involved at all:
+- **Every fresh tag**: the moment the extension notices you've been
+  tagged and files the card, it also fetches that card's comment thread
+  (using whichever Trello tab happens to already be open — same
+  best-effort lookup the card's due date already gets) and hands a copy to
+  the server right then, before you've done anything at all.
+- **Opening a card**: the extension's own **Open card** panel (popup/side
+  panel → Board) always fetches the live thread when you open a card
+  there, and re-syncs it to the server every time, so it stays current.
+
+Between the two, most cards are covered without you doing anything. For
+one filed before this existed, or tagged with no Trello tab open at the
+time, **Backfill details** (the button next to Recategorize on the
+extension's board) also syncs a comment thread for any card that doesn't
+have one yet, alongside the client-name/due-date backfill it already did.
+
+The one gap neither covers: a card nobody's opened in the extension and
+that was tagged with no Trello tab open, before you've had a chance to
+click Backfill. For that case (or to skip needing the extension open at
+all), setting `TRELLO_API_KEY` / `TRELLO_TOKEN` lets the *server* fetch a
+card's comment thread directly instead:
 
 1. Get an API key at [trello.com/app-key](https://trello.com/app-key)
    (while logged into Trello) — that page also shows your key.
