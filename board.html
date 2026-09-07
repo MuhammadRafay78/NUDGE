@@ -85,9 +85,15 @@
     .item .b.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     .item .more { color: var(--accent); font-size: 11.5px; background: none; border: none; padding: 4px 0 0; cursor: pointer; }
     .item .moves { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+    /* flex:1 1 0 with no floor let these shrink to fit the row no matter
+       how long a label got — which just meant the browser silently
+       clipped the text instead ("Waiting for client info" showing as
+       "Waitin"), rather than ever actually wrapping. A real minimum lets
+       flex-wrap do its job: each select gets its own line once both can't
+       fit full-width side by side. */
     .item .move, .item .move-board { font: inherit; color: var(--fg); font-size: 11px; font-weight: 550;
       background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px;
-      cursor: pointer; flex: 1 1 0; min-width: 0; }
+      cursor: pointer; flex: 1 1 130px; min-width: 100px; }
     .item .move:hover, .item .move-board:hover { border-color: var(--accent); }
     .item .row2 { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
     .item .when { color: var(--muted); font-size: 11px; flex: 1 1 auto; min-width: 0; overflow: hidden;

@@ -73,7 +73,13 @@
   .item .b { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .item .moves { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
-  .item .moves select { flex: 1 1 0; min-width: 0; }
+  /* flex:1 1 0 with no floor let these shrink to fit the row no matter how
+     long a label got — which just meant the browser silently clipped the
+     text instead ("Waiting for client info" showing as "Waitin"), rather
+     than ever actually wrapping. A real minimum lets flex-wrap do its
+     job: each select gets its own line once both can't fit full-width
+     side by side. */
+  .item .moves select { flex: 1 1 130px; min-width: 100px; }
   .item .meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .item .when { color: var(--muted); font-size: 11px; flex: 1 1 auto; min-width: 0; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
