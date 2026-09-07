@@ -145,13 +145,16 @@ Every successful push also drops a card into an **Inbox** column on a small
 Kanban board — same server, same pairing code, so the extension's board
 (**popup/side panel → Board**, or Settings → Mobile notifications → Open
 board) and the phone's board (open the pairing page → **Open board**) show
-the same cards. Columns are fixed: **Inbox → Doing → Done**. Cards are also
-grouped onto boards — **Main / QTM / Tax Plan Draft / Action Items** —
-picked automatically when a card is filed; anything that itself reads as an
-action-/pending-items list lands on the Action Items board rather than a
-same-named column, so that grouping only happens once. Switch between
-boards with the tabs above the columns. Move a card with its dropdowns, or
-drag it — onto another column, or straight onto a different board's tab.
+the same cards. Columns are fixed: **Inbox → Doing → Done** on every board
+except Action Items, which gets a fourth — **Inbox → Doing → Waiting for
+info → Done** — for a client ask that's blocked on someone else's reply.
+Cards are also grouped onto boards — **Main / QTM / Tax Plan Draft / Action
+Items** — picked automatically when a card is filed; anything that itself
+reads as an action-/pending-items list lands on the Action Items board
+rather than a same-named column, so that grouping only happens once.
+Switch between boards with the tabs above the columns. Move a card with
+its dropdowns, or drag it — onto another column, or straight onto a
+different board's tab.
 The sort control next to search reorders cards within each column, by due
 date (soonest and overdue first) or by when they were added (newest first).
 Type into "Start a card…" to add one by hand (lands straight in Doing) for
@@ -216,7 +219,7 @@ the stored snippet, same as before either of these existed.
 | `POST /api/unpair` | `{ code }` | Forgets that phone |
 | `GET /api/cards?code=` | — | Lists that code's board cards |
 | `POST /api/cards` | `{ code, title, body?, url?, column? }` | Adds a card (defaults to Inbox) |
-| `PATCH /api/cards/:id` | `{ code, ...fields }` | Updates any subset of a card's fields — `column` (`inbox`\|`doing`\|`done`), `board`, or others including `comments` (the extension syncing a card's Trello thread) |
+| `PATCH /api/cards/:id` | `{ code, ...fields }` | Updates any subset of a card's fields — `column` (`inbox`\|`doing`\|`waiting`\|`done` — `waiting` only shown on the Action Items board), `board`, or others including `comments` (the extension syncing a card's Trello thread) |
 | `DELETE /api/cards/:id` | `{ code }` | Removes a card |
 | `GET /api/trello-card?cardId=` | — | A card's full comment thread from Trello — 501 if `TRELLO_API_KEY`/`TRELLO_TOKEN` aren't set |
 

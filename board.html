@@ -38,7 +38,10 @@
     .board-tab.drag-over { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
     .board-tab .n { color: inherit; opacity: .75; font-weight: 700; }
 
-    .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; align-items: start; }
+    /* --board-cols is set in JS to however many columns the active board
+       actually has (3 normally, 4 for Action Items) — a fixed count here
+       left an empty track any time a board had fewer columns than that. */
+    .board { display: grid; grid-template-columns: repeat(var(--board-cols, 3), 1fr); gap: 14px; align-items: start; }
     @media (max-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 560px) { .board { grid-template-columns: 1fr; } }
 
