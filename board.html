@@ -133,6 +133,9 @@
       font-size: 11px; font-weight: 650; padding: 2px 8px; border-radius: 5px; margin-right: 8px; }
     .modal-head a.open { color: var(--muted); font-size: 11.5px; text-decoration: none; }
     .modal-head a.open:hover { color: var(--accent); }
+    .modal-head button.ask-card { color: var(--accent); font: inherit; font-size: 11.5px; background: none;
+      border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; margin-left: 8px; cursor: pointer; }
+    .modal-head button.ask-card:hover { background: var(--accent-soft); border-color: var(--accent); }
     .modal-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
       border-radius: 8px; border: none; background: none; color: var(--muted); font-size: 19px;
       line-height: 1; cursor: pointer; }
@@ -205,6 +208,27 @@
     .chat-input-row textarea { flex: 1; font: inherit; font-size: 13.5px; padding: 8px 10px;
       border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
       resize: vertical; min-height: 40px; }
+
+    /* A round, always-in-the-corner trigger instead of a toolbar button —
+       stays reachable with one thumb no matter how far the page has
+       scrolled, on a phone-width viewport especially. The panel it opens
+       floats just above it rather than pushing into the page's normal
+       flow, like any chat-widget popup. */
+    .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 40;
+      width: 56px; height: 56px; border-radius: 50%; border: none;
+      background: var(--accent); color: #fff; font-size: 24px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
+    .chat-fab:hover { filter: brightness(1.06); }
+    .chat-fab:active { transform: scale(.95); }
+    #chatPanel.floating { position: fixed; right: 22px; bottom: 90px; z-index: 40;
+      width: 380px; max-width: calc(100vw - 32px); max-height: 70vh;
+      display: flex; flex-direction: column; box-shadow: 0 10px 34px rgba(0, 0, 0, .3); }
+    #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
+    @media (max-width: 520px) {
+      .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
+      #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; max-width: none; max-height: 76vh; }
+    }
   </style>
 </head>
 <body>
@@ -230,11 +254,10 @@
     <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
     <button class="btn" id="backfillBtn" title="Fill in client name + due date for older cards, make any card's due date start updating live instead of staying frozen, and sync a comment thread for any card that doesn't have one yet — needs an open Trello tab">Backfill details</button>
     <button class="btn" id="recatBtn" title="Move any card whose headline carries a QTM/UTM code back onto QTM, then move anything else whose text reads as an action-/pending-items list onto the Action Items board">Recategorize</button>
-    <button class="btn" id="chatBtn" title="Ask a question about the cards on this board — uses the same Gemini key as Sort mentions">💬 Ask the board</button>
     <span class="meta" id="status"></span>
   </div>
 
-  <div class="update-panel" id="chatPanel" hidden>
+  <div class="update-panel floating" id="chatPanel" hidden>
     <div class="update-head">
       <b>Ask the board</b>
       <span class="meta" id="chatStatus"></span>
@@ -276,6 +299,8 @@
   <div class="modal-backdrop" id="cardModal" hidden>
     <div class="modal-box" id="cardModalBox"></div>
   </div>
+
+  <button class="chat-fab" id="chatBtn" title="Ask a question about the cards on this board — uses the same Gemini key as Sort mentions">💬</button>
 
   <script src="common.js"></script>
   <script src="board.js"></script>

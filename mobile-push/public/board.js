@@ -345,6 +345,7 @@ function modalHtml(card) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Reply on Trello &#8599;</a>'
     : '';
+  const askCard = '<button type="button" class="ask-card" data-title="' + esc(card.title || heading) + '">&#128172; Ask about this card</button>';
 
   let body;
   if (!card.cardId) {
@@ -370,6 +371,7 @@ function modalHtml(card) {
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (due ? '<div class="due">' + esc(due) + '</div>' : '') +
       trelloLink +
+      askCard +
     '</div>' +
     '<div class="modal-body">' + body + '</div>'
   );
@@ -429,6 +431,12 @@ function closeModal() {
 }
 
 modalEl.addEventListener('click', (e) => {
+  if (e.target.classList.contains('ask-card')) {
+    const title = e.target.dataset.title || '';
+    closeModal();
+    openChat(title ? 'About "' + title + '": ' : '');
+    return;
+  }
   if (e.target === modalEl || e.target.classList.contains('modal-close')) closeModal();
 });
 document.addEventListener('keydown', (e) => {
@@ -454,11 +462,16 @@ function renderChatMessages() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-chatBtn.addEventListener('click', () => {
+function openChat(prefill) {
   chatModal.hidden = false;
   renderChatMessages();
+  if (prefill != null) chatInput.value = prefill;
   chatInput.focus();
-});
+  const len = chatInput.value.length;
+  chatInput.setSelectionRange(len, len);
+}
+
+chatBtn.addEventListener('click', () => openChat());
 chatClose.addEventListener('click', () => { chatModal.hidden = true; });
 chatModal.addEventListener('click', (e) => {
   if (e.target === chatModal) chatModal.hidden = true;

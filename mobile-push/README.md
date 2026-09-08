@@ -223,10 +223,16 @@ the stored snippet, same as before either of these existed.
 
 ### Ask the board
 
-Both boards have a **💬 Ask** button — a chat, grounded only in the cards
-actually on the board (title, due date, board/column, and any synced
-comment thread), not a general assistant. It won't answer anything the
-board data doesn't already say.
+Both boards have a floating **💬** button, pinned to the bottom-right
+corner so it stays reachable while scrolling — tap it to open a chat
+grounded only in the cards actually on the board (title, due date,
+board/column, and any synced comment thread), not a general assistant. It
+won't answer anything the board data doesn't already say.
+
+Opening any card also shows an **💬 Ask about this card** button right in
+its header — a shortcut that opens the same chat with the question box
+already pointed at that card by name, for when what you want to ask is
+about one specific card rather than the board in general.
 
 On the extension's board this reuses the same Gemini key as **Settings →
 Sort mentions** — nothing extra to set up if you already use that. On the
