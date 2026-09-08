@@ -1555,47 +1555,6 @@ var QA = (function () {
     return inTrelloTab(fetchCardWhole, [cardId], !!autoOpen);
   }
 
-  /* Search-only, never rendered: name + description + every checklist's own
-     name and item names + the full comment thread, concatenated into one
-     blob. This is what the board's Recategorize button tests against —
-     the locally-stored title/context/body snippet alone misses a card
-     whose only "action items"/"pending items" text lives in its
-     description, a checklist, or a comment that came after the snippet was
-     captured. Keeping this separate from fetchCardWhole above means the
-     "Open card" panel still shows comments only, per what he actually
-     wants displayed — this is purely for the keyword test. Same "needs an
-     open Trello tab" constraint as the other card-scoped lookups above.
-     Injected, so it must reference nothing outside itself. */
-  function fetchCardSearchText(cardId) {
-    return (async () => {
-      try {
-        const res = await fetch('https://trello.com/1/cards/' + encodeURIComponent(cardId) +
-          '?fields=name,desc' +
-          '&checklists=all&checklist_fields=name&checkItem_fields=name' +
-          '&actions=commentCard&actions_limit=1000',
-          { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-        if (!res.ok) return { ok: false, status: res.status };
-        const j = await res.json();
-        const parts = [j.name || '', j.desc || ''];
-        (Array.isArray(j.checklists) ? j.checklists : []).forEach(function (cl) {
-          parts.push(cl.name || '');
-          (cl.checkItems || []).forEach(function (it) { parts.push(it.name || ''); });
-        });
-        (Array.isArray(j.actions) ? j.actions : [])
-          .filter(function (a) { return a && a.type === 'commentCard'; })
-          .forEach(function (a) { parts.push((a.data && a.data.text) || ''); });
-        return { ok: true, text: parts.join(' ') };
-      } catch (e) {
-        return { ok: false, error: String((e && e.message) || e) };
-      }
-    })();
-  }
-
-  async function cardSearchTextFor(cardId) {
-    if (!cardId) return { ok: false, error: 'no card' };
-    return inTrelloTab(fetchCardSearchText, [cardId], true);
-  }
-
   async function reactToMention(item, reaction) {
     const r = typeof reaction === 'string'
       ? REACTIONS.filter(function (x) { return x.emoji === reaction || x.shortName === reaction; })[0]
@@ -5051,7 +5010,7 @@ var QA = (function () {
     REACTIONS, findCommentAction, postTrelloReaction, reactToMention, reactErrorMessage,
     openCardInPlace, cardIsOpen, openCardSmart,
     NOTIF_URL, NOTIF_QS, shapeNotifications, notificationsAnywhere,
-    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, cardSearchTextFor, ACTION_ITEMS_RE, QTM_TITLE_RE, tidyCommentText, shortUrl,
+    pickDue, fetchCardDue, dueLabel, inTrelloTab, dueForCard, fetchCardDetails, cardDetailsFor, cardWholeFor, ACTION_ITEMS_RE, QTM_TITLE_RE, tidyCommentText, shortUrl,
     setNotificationRead, rememberHandled, handledErrorMessage, getMemory, setMemory,
     BIZ_ZONE_DEFAULT, getZone, setZone, zoneOffsetMs, startOfDayIn, dayKeyIn, daysApartIn,
     fetchTrelloMembers, cardMembers, knownPeople, mergePeople, matchPeople,

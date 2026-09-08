@@ -6,8 +6,7 @@ const statusEl = document.getElementById('status');
 const warnEl = document.getElementById('notConfigured');
 const cardSearch = document.getElementById('cardSearch');
 const cardSearchClear = document.getElementById('cardSearchClear');
-const backfillBtn = document.getElementById('backfillBtn');
-const recatBtn = document.getElementById('recatBtn');
+const clearBtn = document.getElementById('clearBtn');
 const chatBtn = document.getElementById('chatBtn');
 const chatPanel = document.getElementById('chatPanel');
 const chatMessages = document.getElementById('chatMessages');
@@ -1085,132 +1084,40 @@ cardSearch.addEventListener('input', () => {
   render(lastCards);
 });
 
-/* ---------- backfill: fill in client name + due date + a synced comment
-   thread for cards filed before those worked reliably. Needs an open
-   Trello tab, same as the automatic per-notification enrichment. ---------- */
+/* ---------- clear board: bulk-delete every card on whichever tab is
+   currently showing — for wiping out a bad import (an outside integration
+   gone wrong and filed hundreds of unwanted cards, a manual paste mistake)
+   without clicking each card's own "x" one at a time. Only ever touches
+   the active tab's cards; every other board is untouched. Confirms first
+   since this can't be undone. ---------- */
 
-function shortLinkFromUrl(url) {
-  const m = /trello\.com\/c\/([^/?#]+)/.exec(url || '');
-  return m ? m[1] : '';
-}
-
-backfillBtn.addEventListener('click', async () => {
-  /* three kinds of gap: a card with no Trello link at all (the original
-     reason this button exists), a card that's properly linked but was
-     filed before dueAt existed — its "N days overdue" text is frozen at
-     whatever it said the day it was filed — and a card with no synced
-     comment thread yet (filed before that existed, or before this
-     specific card was ever opened here), which is what leaves the
-     shareable board showing nothing but the old stored snippet for it. */
-  const targets = Object.values(cardsById).filter((c) =>
-    (!c.cardId && shortLinkFromUrl(c.url)) || (c.cardId && (!c.dueAt || !Array.isArray(c.comments)))
-  );
+clearBtn.addEventListener('click', async () => {
+  const meta = allBoards().find((b) => b.id === activeBoard);
+  const label = meta ? meta.label : activeBoard;
+  const targets = Object.values(cardsById).filter((c) => cardBoard(c) === activeBoard);
   if (!targets.length) {
-    statusEl.textContent = 'Nothing to backfill — every card already has this.';
+    statusEl.textContent = 'Nothing to clear — ' + label + ' is already empty.';
     return;
   }
-  backfillBtn.disabled = true;
+  if (!confirm('Delete all ' + targets.length + ' card(s) on ' + label + '? This cannot be undone.')) return;
+
+  clearBtn.disabled = true;
   let done = 0;
   let failed = 0;
   for (const card of targets) {
-    backfillBtn.textContent = 'Backfilling ' + (done + failed + 1) + ' of ' + targets.length + '…';
-    const shortLink = card.cardId || shortLinkFromUrl(card.url);
+    clearBtn.textContent = 'Clearing ' + (done + failed + 1) + ' of ' + targets.length + '…';
     try {
-      const got = await QA.cardDetailsFor(shortLink, true);   // explicit click — worth opening a tab for
-      if (!got || !got.ok) { failed++; continue; }
-      const lab = got.due ? QA.dueLabel(got.due, got.dueComplete) : null;
-      const patch = {
-        cardId: shortLink,
-        context: got.name || card.context || '',
-        due: lab ? lab.text : (card.due || ''),
-        dueAt: got.due || '',
-        dueComplete: !!got.dueComplete
-      };
-      if (!Array.isArray(card.comments)) {
-        const whole = await QA.cardWholeFor(shortLink, true);
-        if (whole && whole.ok) patch.comments = whole.comments || [];
-      }
-      await QA.updateCard(card.id, patch);
+      await QA.deleteCard(card.id);
       done++;
     } catch (e) {
       failed++;
     }
   }
-  backfillBtn.textContent = 'Backfill details';
-  backfillBtn.disabled = false;
+  clearBtn.textContent = 'Clear';
+  clearBtn.disabled = false;
   await load();   // refresh the board first — load() sets its own status text, so...
-  statusEl.textContent = 'Backfilled ' + done + ' of ' + targets.length +
-    (failed ? ' (' + failed + ' failed — needs an open Trello tab)' : '') + '.';   // ...overwrite it with the fuller result
-});
-
-/* ---------- one-time board fixup (see keywordBoardOverride in common.js,
-   which only ever applies as a card is being filed — anything filed
-   before a rule existed, or before this keyword check ran first, is stuck
-   wherever it landed). Two passes, in this order because the first has to
-   win over the second:
-
-   1. A card whose own headline carries a QTM/UTM code belongs on QTM, full
-      stop — this moves any of those back no matter where they currently
-      sit. This existed because the action-items pass below, once it could
-      see a card's full comment thread and not just its locally-stored
-      snippet, found the phrase "Pending Items:"/"Action items — X:" is
-      just this team's own boilerplate call-recap section headers — it
-      shows up in nearly every QTM card's thread, not only in cards that
-      are themselves an action-items list — and swept QTM cards onto
-      Action Items wholesale. Cheap and unambiguous: no Trello lookup
-      needed, just the title/context already loaded.
-   2. Anything else not already on Action Items, and whose headline is NOT
-      a QTM card, that reads as an action-/pending-items list moves there
-      — a cheap check against the local snippet first, then a fuller
-      Trello lookup (QA.cardSearchTextFor, needs an open Trello tab) for
-      anything the cheap check misses but has a card to look up. ---------- */
-
-recatBtn.addEventListener('click', async () => {
-  const cards = Object.values(cardsById);
-  const headlineOf = (c) => [c.context, c.title].filter(Boolean).join(' ');
-
-  recatBtn.disabled = true;
-
-  const backToQtm = cards.filter((c) => cardBoard(c) !== 'qtm' && QA.QTM_TITLE_RE.test(headlineOf(c)));
-  let qtmFixed = 0;
-  for (const card of backToQtm) {
-    recatBtn.textContent = 'Fixing ' + (qtmFixed + 1) + ' of ' + backToQtm.length + '…';
-    try {
-      await QA.updateCard(card.id, { board: 'qtm' });
-      qtmFixed++;
-    } catch (e) { /* leave it where it is — try again next click */ }
-  }
-
-  const candidates = cards.filter((c) => cardBoard(c) !== 'actionitems' && !QA.QTM_TITLE_RE.test(headlineOf(c)));
-  let actionFixed = 0;
-  let checked = 0;
-  let failed = 0;
-  for (const card of candidates) {
-    checked++;
-    recatBtn.textContent = 'Checking ' + checked + ' of ' + candidates.length + '…';
-    const localHay = [card.context, card.title, card.body].filter(Boolean).join(' ').toLowerCase();
-    let matched = QA.ACTION_ITEMS_RE.test(localHay);
-    if (!matched && card.cardId) {
-      const got = await QA.cardSearchTextFor(card.cardId);
-      if (got && got.ok) matched = QA.ACTION_ITEMS_RE.test(got.text);
-      else failed++;
-    }
-    if (!matched) continue;
-    try {
-      await QA.updateCard(card.id, { board: 'actionitems' });
-      actionFixed++;
-    } catch (e) { /* leave it where it is — try again next click */ }
-  }
-
-  recatBtn.textContent = 'Recategorize';
-  recatBtn.disabled = false;
-  await load();
-  statusEl.textContent = (qtmFixed || actionFixed)
-    ? 'Fixed ' + (qtmFixed + actionFixed) + ' card(s)' +
-      (qtmFixed ? ' — ' + qtmFixed + ' moved back to QTM' : '') +
-      (actionFixed ? (qtmFixed ? ',' : ' —') + ' ' + actionFixed + ' moved to Action Items' : '') +
-      (failed ? ' (' + failed + ' could not be fully checked — needs an open Trello tab)' : '') + '.'
-    : 'Nothing to fix — every card is already sorted.';
+  statusEl.textContent = 'Cleared ' + done + ' of ' + targets.length + ' card(s) on ' + label +
+    (failed ? ' (' + failed + ' failed)' : '') + '.';   // ...overwrite it with the fuller result
 });
 
 /* ---------- ask the board a question ----------
