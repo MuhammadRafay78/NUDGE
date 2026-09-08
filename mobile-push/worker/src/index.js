@@ -295,18 +295,28 @@ export default {
       if (!id) return json({ ok: false, error: 'That name has no letters or numbers to build a board id from.' }, 400);
       if (BOARDS.includes(id)) return json({ ok: false, error: 'That name collides with a built-in board.' }, 400);
 
-      const list = await loadCustomBoards(env, code);
-      const existing = list.find((b) => b.id === id);
-      if (existing) {
-        existing.label = name;
-      } else {
-        if (list.length >= MAX_CUSTOM_BOARDS) {
-          return json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' }, 400);
+      /* This route was throwing an uncaught exception in production —
+         surfacing as Cloudflare's own generic "Worker threw exception"
+         error page, with the real cause invisible to both the caller (a
+         Google Apps Script trigger, in practice) and to us. Wrapped like
+         every other KV-touching route below so a failure at least comes
+         back as a readable error instead of a blank crash page. */
+      try {
+        const list = await loadCustomBoards(env, code);
+        const existing = list.find((b) => b.id === id);
+        if (existing) {
+          existing.label = name;
+        } else {
+          if (list.length >= MAX_CUSTOM_BOARDS) {
+            return json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' }, 400);
+          }
+          list.push({ id: id, label: name, addedAt: Date.now() });
         }
-        list.push({ id: id, label: name, addedAt: Date.now() });
+        await saveCustomBoards(env, code, list);
+        return json({ ok: true, board: { id: id, label: name } });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e) }, 500);
       }
-      await saveCustomBoards(env, code, list);
-      return json({ ok: true, board: { id: id, label: name } });
     }
 
     /* Read-only mirror of the extension's fetchCardWhole() (common.js) —
