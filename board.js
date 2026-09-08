@@ -266,6 +266,14 @@ function formatCommentHtml(text) {
   }).join('');
 }
 
+/* commentsAt is only set once a card actually has synced comments (Trello
+   sync, a reply, or something outside Nudge — a Google Sheet script, say —
+   appending to the thread); a card with none yet just has when it was
+   filed. */
+function lastActivityAt(card) {
+  return card.commentsAt && card.commentsAt > card.createdAt ? card.commentsAt : card.createdAt;
+}
+
 function itemHtml(card, terms) {
   /* A separate, clearly-labelled escape hatch to the source page — kept
      small and secondary, since "Open card" opens the comment thread right
@@ -323,14 +331,15 @@ function itemHtml(card, terms) {
         '<select class="move" title="Move to…">' + moveOptions + '</select>' +
       '</div>' +
       '<div class="row2">' +
-        /* When this was actually tagged/filed — not when it was last
-           touched. The server bumps updatedAt on any PATCH at all,
-           including a plain column/board move (a drag, or Recategorize
-           fixing dozens of cards in one pass), so that field reading as
-           "1m ago" on a card that's actually 17 days overdue was just
-           this badge picking up the wrong timestamp, not anything real
-           happening to the card. */
-        '<span class="when">' + QA.ago(card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed, or — once there's real new
+           activity on the thread — when the latest message landed.
+           updatedAt is still avoided: the server bumps that on any PATCH
+           at all, including a plain column/board move (a drag, or
+           Recategorize fixing dozens of cards in one pass), which is what
+           made this badge read "1m ago" on a card that was actually 17
+           days overdue. commentsAt only moves when the comments array
+           itself changes, so a move alone still leaves this alone. */
+        '<span class="when">' + QA.ago(lastActivityAt(card)) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'
