@@ -197,22 +197,37 @@
     .meta.ok { color: #16a34a; font-weight: 600; }
     .meta.bad { color: var(--accent); }
     /* Same chat-bubble language as the "Open card" comment thread — a
-       question/answer pair reads the same way a tagged comment does. */
-    .chat-messages { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column;
-      gap: 10px; margin-bottom: 10px; padding-right: 2px; }
-    .chat-msg { background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
-      padding: 8px 12px; font-size: 13.5px; line-height: 1.5; max-width: 88%; overflow-wrap: anywhere; }
+       question/answer pair reads the same way a tagged comment does.
+       Sized for a real conversation window rather than a cramped popup —
+       bigger type, roomier bubbles, an actual sense of scale. */
+    .chat-messages { max-height: 460px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 12px; margin-bottom: 12px; padding-right: 4px; }
+    .chat-msg { background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 14px; font-size: 14.5px; line-height: 1.6; max-width: 88%; overflow-wrap: anywhere; }
     .chat-msg.user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent); }
     .chat-msg.ai { align-self: flex-start; }
-    .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
-    .chat-input-row textarea { flex: 1; font: inherit; font-size: 13.5px; padding: 8px 10px;
-      border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-      resize: vertical; min-height: 40px; }
+    /* A pulsing three-dot bubble while waiting on an answer — same shape as
+       an AI reply, so it reads as "it's typing" rather than a bare status
+       line off to the side. */
+    .chat-msg.typing { display: flex; align-items: center; gap: 5px; padding: 13px 16px; }
+    .chat-msg.typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+      display: inline-block; animation: chatTypingBounce 1.2s infinite ease-in-out; }
+    .chat-msg.typing span:nth-child(2) { animation-delay: .15s; }
+    .chat-msg.typing span:nth-child(3) { animation-delay: .3s; }
+    @keyframes chatTypingBounce {
+      0%, 60%, 100% { opacity: .35; transform: translateY(0); }
+      30% { opacity: 1; transform: translateY(-3px); }
+    }
+    .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
+    .chat-input-row textarea { flex: 1; font: inherit; font-size: 14.5px; padding: 11px 14px;
+      border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+      resize: vertical; min-height: 50px; }
     /* Without this the browser's own default focus ring shows instead — a
        plain white/gray rectangle that clashes hard against a dark, orange-
        accented panel. */
     .chat-input-row textarea:focus { outline: none; border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-soft); }
+    .chat-input-row .btn.go { padding: 11px 20px; font-size: 14px; }
 
     /* A round, always-in-the-corner trigger instead of a toolbar button —
        stays reachable with one thumb no matter how far the page has
@@ -220,15 +235,17 @@
        floats just above it rather than pushing into the page's normal
        flow, like any chat-widget popup. */
     .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 40;
-      width: 56px; height: 56px; border-radius: 50%; border: none;
-      background: var(--accent); color: #fff; font-size: 24px; line-height: 1;
+      width: 60px; height: 60px; border-radius: 50%; border: none;
+      background: var(--accent); color: #fff; font-size: 26px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
-    #chatPanel.floating { position: fixed; right: 22px; bottom: 90px; z-index: 40;
-      width: 440px; max-width: calc(100vw - 32px); max-height: 70vh;
-      display: flex; flex-direction: column; box-shadow: 0 10px 34px rgba(0, 0, 0, .3); }
+    #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 40;
+      width: 620px; max-width: calc(100vw - 32px); max-height: 82vh;
+      padding: 18px 20px; display: flex; flex-direction: column;
+      box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
+    #chatPanel.floating .update-head b { font-size: 16px; }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
     @media (max-width: 520px) {
       .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
