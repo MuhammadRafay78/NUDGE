@@ -64,7 +64,8 @@ const BOARD_CHAT_SYSTEM = [
   '4. Structure it for readability rather than one dense paragraph: when an answer has a few distinct parts (status, blockers, next step), put each on its own line starting with "- ", the way you would jot a quick list. Never number them, never restate the CONTEXT field-by-field or mirror its bracket/label shape.',
   '5. Quote an exact phrase only when the specific wording matters; otherwise say it in your own words.',
   '6. When asked what needs attention, prefer overdue and soon-due cards first.',
-  '7. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 4, is the only structure allowed.'
+  '7. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 4, is the only structure allowed.',
+  '8. Several cards can belong to similar-sounding people (a shared last name, a couple filed as two separate cards, one name that is a substring of another). Before answering about "X", check the CONTEXT for every card whose name is close to X — if more than one plausibly matches, ask which one he means rather than picking one silently; if only one truly matches, answer about that one specifically and do not blend in details from a different, similarly-named card.'
 ].join('\n');
 
 function buildBoardChatContext(cards, boardLabels) {
