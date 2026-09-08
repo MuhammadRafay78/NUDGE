@@ -12,7 +12,9 @@ const CODE_LENGTH = 8;
 const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const boardKey = (code) => 'board:' + code;
+const customBoardsKey = (code) => 'customboards:' + code;
 const MAX_COMMENTS = 300;
+const MAX_CUSTOM_BOARDS = 40;
 
 /* The extension already holds a live, logged-in Trello session — the
    Worker never has one of its own — so rather than making every viewer of
@@ -52,16 +54,17 @@ const BOARD_CHAT_SYSTEM = [
   '5. Plain prose or short bullets. No preamble, no restating the question, no markdown headers.'
 ].join('\n');
 
-function buildBoardChatContext(cards) {
+function buildBoardChatContext(cards, boardLabels) {
+  const labels = boardLabels || BOARD_LABELS;
   const list = cards || [];
   const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
-    const boardId = BOARDS.includes(c.board) ? c.board : 'main';
+    const boardId = labels[c.board] ? c.board : 'main';
     const colIds = boardId === 'actionitems' ? ACTION_ITEMS_COLUMN_IDS : DEFAULT_COLUMN_IDS;
     const colId = colIds.includes(c.column) ? c.column : 'doing';
     const name = c.context || c.title || 'Untitled';
-    out.push('- [' + (BOARD_LABELS[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
+    out.push('- [' + (labels[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
       (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
     const note = String(c.body || '').replace(/\s+/g, ' ').trim();
     if (note) out.push('  NOTE: ' + note.slice(0, 300));
@@ -119,8 +122,33 @@ async function saveBoard(env, code, cards) {
   await env.PUSH_KV.put(boardKey(code), JSON.stringify(cards));
 }
 
+/* ---------- custom board tabs, added by name from outside Nudge ----------
+   Mirrors server.js's copy of this — the built-in four (BOARDS above) are
+   fixed; this is for a tab added by something else entirely (a Google
+   Sheet's Apps Script trigger POSTing to /api/boards is the case
+   README.md walks through), one list per pairing code in its own KV key
+   rather than folded into the card-list shape at boardKey(). */
+
+async function loadCustomBoards(env, code) {
+  const raw = await env.PUSH_KV.get(customBoardsKey(code));
+  return raw ? JSON.parse(raw) : [];
+}
+
+async function saveCustomBoards(env, code, list) {
+  await env.PUSH_KV.put(customBoardsKey(code), JSON.stringify(list));
+}
+
+function slugifyBoardName(name) {
+  return String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+}
+
+async function allBoardIds(env, code) {
+  return BOARDS.concat((await loadCustomBoards(env, code)).map((b) => b.id));
+}
+
 async function addCard(env, code, patch) {
   const cards = await loadBoard(env, code);
+  const validBoards = await allBoardIds(env, code);
   const now = Date.now();
   const card = {
     id: crypto.randomUUID(),
@@ -142,7 +170,7 @@ async function addCard(env, code, patch) {
     notifId: (patch.notifId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
-    board: BOARDS.includes(patch.board) ? patch.board : 'main',
+    board: validBoards.includes(patch.board) ? patch.board : 'main',
     createdAt: now,
     updatedAt: now
   };
@@ -222,7 +250,41 @@ export default {
     if (url.pathname === '/api/cards' && request.method === 'GET') {
       const code = String(url.searchParams.get('code') || '').toUpperCase();
       if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
-      return json({ ok: true, cards: await loadBoard(env, code) });
+      return json({ ok: true, cards: await loadBoard(env, code), customBoards: await loadCustomBoards(env, code) });
+    }
+
+    /* Lets something outside Nudge add a board tab by name — a Google
+       Sheet's Apps Script trigger POSTing here on every new row is the
+       case README.md walks through ("Add a board from a Google Sheet"),
+       so a new tab shows up on that code's board without anyone touching
+       the extension or this Worker by hand. The pairing code is the only
+       credential this needs, same as every other endpoint here — anyone
+       who already has it can already read and write that code's cards.
+       Upserts by slug, so sending the same name again (a trigger
+       re-firing, a row edited back to what it was) relabels the existing
+       tab instead of duplicating it. */
+    if (url.pathname === '/api/boards' && request.method === 'POST') {
+      const payload = await request.json().catch(() => ({}));
+      const code = String(payload.code || '').toUpperCase();
+      if (!code) return json({ ok: false, error: 'Missing code.' }, 400);
+      const name = String(payload.name || '').trim().slice(0, 60);
+      if (!name) return json({ ok: false, error: 'Missing board name.' }, 400);
+      const id = slugifyBoardName(name);
+      if (!id) return json({ ok: false, error: 'That name has no letters or numbers to build a board id from.' }, 400);
+      if (BOARDS.includes(id)) return json({ ok: false, error: 'That name collides with a built-in board.' }, 400);
+
+      const list = await loadCustomBoards(env, code);
+      const existing = list.find((b) => b.id === id);
+      if (existing) {
+        existing.label = name;
+      } else {
+        if (list.length >= MAX_CUSTOM_BOARDS) {
+          return json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' }, 400);
+        }
+        list.push({ id: id, label: name, addedAt: Date.now() });
+      }
+      await saveCustomBoards(env, code, list);
+      return json({ ok: true, board: { id: id, label: name } });
     }
 
     /* Read-only mirror of the extension's fetchCardWhole() (common.js) —
@@ -284,7 +346,9 @@ export default {
       if (!question) return json({ ok: false, error: 'Missing question.' }, 400);
       const history = Array.isArray(payload.history) ? payload.history : [];
 
-      const context = buildBoardChatContext(await loadBoard(env, code));
+      const boardLabels = Object.assign({}, BOARD_LABELS);
+      (await loadCustomBoards(env, code)).forEach((b) => { boardLabels[b.id] = b.label; });
+      const context = buildBoardChatContext(await loadBoard(env, code), boardLabels);
       const contents = [];
       history.slice(-6).forEach((h) => {
         if (h && h.content) contents.push({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: String(h.content) }] });
@@ -337,7 +401,7 @@ export default {
       if (payload.column !== undefined && !COLUMNS.includes(payload.column)) {
         return json({ ok: false, error: 'Invalid column.' }, 400);
       }
-      if (payload.board !== undefined && !BOARDS.includes(payload.board)) {
+      if (payload.board !== undefined && !(await allBoardIds(env, code)).includes(payload.board)) {
         return json({ ok: false, error: 'Invalid board.' }, 400);
       }
 

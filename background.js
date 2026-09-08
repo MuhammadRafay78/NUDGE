@@ -647,7 +647,7 @@ async function prepareDailyUpdate(reason, image) {
   const cfg = await QA.getDailyUpdate();
   let cards;
   try {
-    cards = await QA.fetchCards();
+    cards = (await QA.fetchCards()).cards;
   } catch (e) {
     const draft = {
       at: Date.now(), reason: reason, text: '',

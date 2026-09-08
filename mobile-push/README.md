@@ -152,7 +152,9 @@ someone else's reply, split by who it's waiting on.
 Cards are also grouped onto boards — **Main / QTM / Tax Plan Draft / Action
 Items** — picked automatically when a card is filed; anything that itself
 reads as an action-/pending-items list lands on the Action Items board
-rather than a same-named column, so that grouping only happens once.
+rather than a same-named column, so that grouping only happens once. More
+board tabs can be added by name from outside Nudge — see "Add a board from
+a Google Sheet" below.
 Switch between boards with the tabs above the columns. Move a card with
 its dropdowns, or drag it — onto another column, or straight onto a
 different board's tab.
@@ -248,6 +250,63 @@ Leave it unset to skip this on the shareable board — its Ask button just
 says the server isn't set up for it yet; the extension's own Ask button is
 unaffected either way, since it never goes through this server at all.
 
+### Add a board from a Google Sheet
+
+`POST /api/boards` adds a board tab by name to your pairing code's board —
+built for a Google Sheet: a small Apps Script trigger POSTs here whenever
+someone adds a row, so a new tab shows up on **your own board** (both the
+extension's and the shareable link's — they're the same data) with no one
+touching Nudge itself. The pairing code is the only credential this needs,
+the same as every other endpoint here.
+
+1. Open the Sheet → **Extensions → Apps Script**, and replace whatever's
+   there with:
+
+   ```js
+   function onNewRow(e) {
+     var sheet = e.range.getSheet();
+     var row = e.range.getRow();
+     // Column A of the edited row becomes the board name — change the 1
+     // below to read a different column instead (B is 2, C is 3, …).
+     var boardName = sheet.getRange(row, 1).getValue();
+     if (!boardName) return;
+
+     UrlFetchApp.fetch('https://YOUR-SERVER-ADDRESS/api/boards', {
+       method: 'post',
+       contentType: 'application/json',
+       payload: JSON.stringify({
+         code: 'YOUR-PAIRING-CODE',
+         name: String(boardName)
+       })
+     });
+   }
+   ```
+
+2. Fill in your server's address and pairing code — both are in the
+   extension's **Settings → Mobile notifications**, same place as
+   everywhere else in this doc.
+3. In the Apps Script editor's left sidebar, click the clock icon
+   (**Triggers**) → **Add Trigger** → function `onNewRow`, event source
+   **From spreadsheet**, event type **On edit** (or **On form submit** if
+   a Google Form feeds this sheet) → **Save**. Google will ask you to
+   authorize the script the first time — that's normal, it's calling out
+   to your own server.
+4. Test it: type a name into that column, then open the board — the new
+   tab shows up within the board's normal ~12-second auto-refresh, no
+   reload needed.
+
+A few things worth knowing:
+- Board names are matched by a simplified id (lowercased, punctuation
+  stripped), so re-sending the same name — the trigger firing again, a row
+  edited back to what it was — relabels the same tab instead of
+  duplicating it.
+- A name that collides with a built-in board (Main, QTM, Tax Plan Draft,
+  Action Items) is rejected rather than overwriting one of those.
+- Cards never land on a Sheet-added board automatically — it's just an
+  empty tab to drag or move cards onto by hand, the same as any other
+  board.
+- Capped at 40 custom boards per pairing code.
+
 ## API
 
 | Route | Body | Does |
@@ -256,7 +315,8 @@ unaffected either way, since it never goes through this server at all.
 | `POST /api/register` | `{ subscription }` | Stores a `PushSubscription`, returns `{ code }` |
 | `POST /api/notify` | `{ code, title, body, url }` | Sends a push to that code's phone, and files a card in Inbox |
 | `POST /api/unpair` | `{ code }` | Forgets that phone |
-| `GET /api/cards?code=` | — | Lists that code's board cards |
+| `GET /api/cards?code=` | — | Lists that code's board cards, plus its custom boards (see below) |
+| `POST /api/boards` | `{ code, name }` | Adds (or relabels, if the name already matches one) a custom board tab for that code — see "Add a board from a Google Sheet" |
 | `POST /api/cards` | `{ code, title, body?, url?, column? }` | Adds a card (defaults to Inbox) |
 | `PATCH /api/cards/:id` | `{ code, ...fields }` | Updates any subset of a card's fields — `column` (`inbox`\|`doing`\|`waiting`\|`done` — `waiting` only shown on the Action Items board), `board`, or others including `comments` (the extension syncing a card's Trello thread) |
 | `DELETE /api/cards/:id` | `{ code }` | Removes a card |
