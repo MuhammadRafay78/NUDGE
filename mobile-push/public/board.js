@@ -263,6 +263,14 @@ async function fetchTrelloCard(cardId) {
   return { comments: data.comments || [] };
 }
 
+/* commentsAt is only set once a card actually has synced comments (Trello
+   sync, a reply, or something outside Nudge — a Google Sheet script, say —
+   appending to the thread); a card with none yet just has when it was
+   filed. */
+function lastActivityAt(card) {
+  return card.commentsAt && card.commentsAt > card.createdAt ? card.commentsAt : card.createdAt;
+}
+
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = columnsForBoard(cardBoard(card)).map((c) =>
@@ -293,13 +301,15 @@ function itemHtml(card) {
         '<select class="move">' + options + '</select>' +
       '</div>' +
       '<div class="meta">' +
-        /* When this was actually tagged/filed — not when it was last
-           touched. The server bumps updatedAt on any PATCH at all,
-           including a plain column/board move, so this badge picking up
-           that field instead made a 17-day-overdue card read as "1m ago"
-           the moment it got dragged or bulk-recategorized — nothing
-           actually happened to the card itself. */
-        '<span class="when">' + ago(card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed, or — once there's real new
+           activity on the thread — when the latest message landed.
+           updatedAt is still avoided: the server bumps that on any PATCH
+           at all, including a plain column/board move, which is what made
+           a 17-day-overdue card read as "1m ago" the moment it got
+           dragged or bulk-recategorized. commentsAt only moves when the
+           comments array itself changes, so a move alone still leaves
+           this alone. */
+        '<span class="when">' + ago(lastActivityAt(card)) + '</span>' +
         openLink +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
