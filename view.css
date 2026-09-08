@@ -9,11 +9,21 @@
   --accent-soft: #fff7ed;
   --chip: #f4f4f5;
 }
+/* System dark applies unless a page has explicitly overridden it to
+   light via data-theme (see the board's theme toggle) — :not() here is
+   what lets that override win over the OS setting. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
     --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
   }
+}
+/* The reverse override: forcing dark even when the OS itself is set to
+   light. Same values as the media-query block above, kept in sync by
+   hand since a CSS custom-media isn't available here. */
+:root[data-theme="dark"] {
+  --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
+  --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
 }
 * { box-sizing: border-box; }
 body {

@@ -3088,6 +3088,23 @@ var QA = (function () {
     await chrome.storage.local.set({ push: Object.assign(cur, patch) });
   }
 
+  /* 'system' (the default) follows the OS/browser's own light-vs-dark
+     setting via view.css's prefers-color-scheme block; 'light'/'dark'
+     override that explicitly, stamped as document.documentElement's
+     data-theme by whichever page applies it (currently the board). Kept
+     here rather than only in board.js so any other extension page could
+     read/apply the same stored choice later. */
+  const THEMES = ['system', 'light', 'dark'];
+
+  async function getTheme() {
+    const got = await chrome.storage.local.get({ theme: 'system' });
+    return THEMES.includes(got.theme) ? got.theme : 'system';
+  }
+
+  async function setTheme(theme) {
+    await chrome.storage.local.set({ theme: THEMES.includes(theme) ? theme : 'system' });
+  }
+
   /* Fire-and-forget: a phone not being reachable should never block a desktop
      notification or throw inside the caller. */
   async function pushToPhone(title, body, url) {
@@ -5037,7 +5054,7 @@ var QA = (function () {
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
     BOARD_CHAT_SYSTEM, buildBoardChatContext, askGeminiAboutBoard,
-    getPush, setPush, pushToPhone,
+    getPush, setPush, pushToPhone, getTheme, setTheme,
     BOARD_COLUMNS, ACTION_ITEMS_COLUMNS, columnsForBoard, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow, ME,
     BUCKETS, GEMINI_MODELS, getTriage, setTriage, triageMentions, parseTriage, triageError,
