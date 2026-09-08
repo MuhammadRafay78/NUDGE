@@ -29,12 +29,18 @@
   .back { color: var(--accent); text-decoration: none; font-size: 13px; }
 
   .searchRow { padding: 0 16px 14px; display: flex; gap: 8px; }
+  /* iOS Safari auto-zooms the whole page on focus for any text input whose
+     computed font-size is under 16px — the fixed-size zoom then never lets
+     go on blur, leaving the layout stuck wider than the screen (content
+     clipped at the right edge, buttons shoved down behind the keyboard).
+     16px sidesteps that; the visual size these actually render at is
+     otherwise the same as everything else on the page. */
   .searchRow input {
-    flex: 1 1 auto; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 9px;
+    flex: 1 1 auto; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 9px;
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
   .searchRow select {
-    flex: 0 0 auto; font: inherit; font-size: 13px; padding: 10px 10px; border-radius: 9px;
+    flex: 0 0 auto; font: inherit; font-size: 16px; padding: 10px 10px; border-radius: 9px;
     border: 1px solid var(--line); background: var(--card); color: var(--fg);
   }
 
@@ -195,7 +201,7 @@
   .chat-msg.user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent); }
   .chat-msg.ai { align-self: flex-start; }
   .chat-foot { padding: 10px 18px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
-  .chat-foot textarea { width: 100%; font: inherit; font-size: 14px; padding: 10px 12px;
+  .chat-foot textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px;
     border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--fg);
     resize: vertical; min-height: 44px; }
   .chat-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
