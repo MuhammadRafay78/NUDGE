@@ -7,6 +7,7 @@ const warnEl = document.getElementById('notConfigured');
 const cardSearch = document.getElementById('cardSearch');
 const cardSearchClear = document.getElementById('cardSearchClear');
 const clearBtn = document.getElementById('clearBtn');
+const themeBtn = document.getElementById('themeBtn');
 const chatBtn = document.getElementById('chatBtn');
 const chatPanel = document.getElementById('chatPanel');
 const chatMessages = document.getElementById('chatMessages');
@@ -1371,3 +1372,30 @@ function passiveRefresh() {
 QA.getMemory().then(load);
 setInterval(passiveRefresh, 12000);
 document.addEventListener('visibilitychange', passiveRefresh);
+
+/* ---------- color theme ----------
+   "system" (the default) just follows the OS/browser's own light-vs-dark
+   setting, same as every other extension page already does via
+   view.css's prefers-color-scheme block — this board was the one place
+   that never picked up an explicit override. Cycling stamps
+   data-theme on <html>, which view.css's rules key off of; stored so it
+   sticks across reloads. */
+const THEME_ICON = { system: '🌓', light: '☀️', dark: '🌙' };
+const THEME_LABEL = { system: 'Matching system', light: 'Light', dark: 'Dark' };
+const THEME_CYCLE = ['system', 'light', 'dark'];
+
+function applyTheme(theme) {
+  if (theme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = THEME_ICON[theme];
+  themeBtn.title = 'Color theme: ' + THEME_LABEL[theme] + ' — click to change';
+}
+
+QA.getTheme().then(applyTheme);
+
+themeBtn.addEventListener('click', async () => {
+  const cur = await QA.getTheme();
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
+  await QA.setTheme(next);
+  applyTheme(next);
+});
