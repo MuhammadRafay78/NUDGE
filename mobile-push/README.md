@@ -197,17 +197,11 @@ itself, automatically, in two ways — no Trello API key needed for either:
   panel → Board) always fetches the live thread when you open a card
   there, and re-syncs it to the server every time, so it stays current.
 
-Between the two, most cards are covered without you doing anything. For
-one filed before this existed, or tagged with no Trello tab open at the
-time, **Backfill details** (the button next to Recategorize on the
-extension's board) also syncs a comment thread for any card that doesn't
-have one yet, alongside the client-name/due-date backfill it already did.
-
-The one gap neither covers: a card nobody's opened in the extension and
-that was tagged with no Trello tab open, before you've had a chance to
-click Backfill. For that case (or to skip needing the extension open at
-all), setting `TRELLO_API_KEY` / `TRELLO_TOKEN` lets the *server* fetch a
-card's comment thread directly instead:
+Between the two, most cards are covered without you doing anything. The
+one gap: a card nobody's opened in the extension and that was tagged with
+no Trello tab open at filing time. For that case (or to skip needing the
+extension open at all), setting `TRELLO_API_KEY` / `TRELLO_TOKEN` lets the
+*server* fetch a card's comment thread directly instead:
 
 1. Get an API key at [trello.com/app-key](https://trello.com/app-key)
    (while logged into Trello) — that page also shows your key.
