@@ -1128,15 +1128,19 @@ clearBtn.addEventListener('click', async () => {
    by the explicit Clear button. ---------- */
 
 let chatHistory = [];   // [{role:'user'|'model', content}]
+let chatThinking = false;   // shows a typing-dots bubble while a question is in flight
 
 function renderChat() {
   /* No separate placeholder paragraph here — the textarea's own
      placeholder already says this, and repeating it as a second wall of
      text right above an empty message list was just visual clutter. */
-  chatMessages.innerHTML = chatHistory.length
-    ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
-        formatCommentHtml(m.content) + '</div>').join('')
-    : '';
+  const bubbles = chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
+    formatCommentHtml(m.content) + '</div>').join('');
+  /* Same shape as an AI reply, so it reads as "it's answering" rather than
+     a separate status line — matches the typing indicator every real chat
+     app uses instead of a bare "Thinking…" caption. */
+  const typing = chatThinking ? '<div class="chat-msg ai typing"><span></span><span></span><span></span></div>' : '';
+  chatMessages.innerHTML = bubbles + typing;
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
@@ -1167,20 +1171,21 @@ async function sendChat() {
   const priorHistory = chatHistory.slice();
   chatHistory.push({ role: 'user', content: q });
   chatInput.value = '';
+  chatThinking = true;
   renderChat();
   chatSend.disabled = true;
-  chatStatus.textContent = 'Thinking…';
+  chatStatus.textContent = '';
   chatStatus.className = 'meta';
   try {
     const context = QA.buildBoardChatContext(Object.values(cardsById));
     const answer = await QA.askGeminiAboutBoard(q, context, priorHistory);
     chatHistory.push({ role: 'model', content: answer });
-    chatStatus.textContent = '';
   } catch (e) {
     chatHistory.pop();   // don't leave an unanswered question sitting in history
     chatStatus.textContent = (e && e.message) || String(e);
     chatStatus.className = 'meta bad';
   }
+  chatThinking = false;
   chatSend.disabled = false;
   renderChat();
 }
