@@ -1130,10 +1130,13 @@ clearBtn.addEventListener('click', async () => {
 let chatHistory = [];   // [{role:'user'|'model', content}]
 
 function renderChat() {
+  /* No separate placeholder paragraph here — the textarea's own
+     placeholder already says this, and repeating it as a second wall of
+     text right above an empty message list was just visual clutter. */
   chatMessages.innerHTML = chatHistory.length
     ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
         formatCommentHtml(m.content) + '</div>').join('')
-    : '<div class="meta">Ask something about the cards on this board — due dates, who’s waiting on what, what’s overdue…</div>';
+    : '';
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
