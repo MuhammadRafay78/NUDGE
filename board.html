@@ -208,6 +208,11 @@
     .chat-input-row textarea { flex: 1; font: inherit; font-size: 13.5px; padding: 8px 10px;
       border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
       resize: vertical; min-height: 40px; }
+    /* Without this the browser's own default focus ring shows instead — a
+       plain white/gray rectangle that clashes hard against a dark, orange-
+       accented panel. */
+    .chat-input-row textarea:focus { outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft); }
 
     /* A round, always-in-the-corner trigger instead of a toolbar button —
        stays reachable with one thumb no matter how far the page has
@@ -222,7 +227,7 @@
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
     #chatPanel.floating { position: fixed; right: 22px; bottom: 90px; z-index: 40;
-      width: 380px; max-width: calc(100vw - 32px); max-height: 70vh;
+      width: 440px; max-width: calc(100vw - 32px); max-height: 70vh;
       display: flex; flex-direction: column; box-shadow: 0 10px 34px rgba(0, 0, 0, .3); }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
     @media (max-width: 520px) {

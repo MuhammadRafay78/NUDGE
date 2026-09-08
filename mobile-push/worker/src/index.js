@@ -41,7 +41,13 @@ const BOARD_LABELS = { main: 'Main', qtm: 'QTM', taxplan: 'Tax Plan Draft', acti
 const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', done: 'Done' };
 const ACTION_ITEMS_COLUMN_IDS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const DEFAULT_COLUMN_IDS = ['inbox', 'doing', 'done'];
-const MAX_CHAT_CONTEXT = 14000;
+/* A board with a couple dozen cards, several carrying a full synced comment
+   thread, can easily run past a small budget here before the loop below
+   reaches an older card — it then silently never reaches the model at all,
+   which answers "not mentioned" about a card that's sitting right there on
+   the board. Gemini's real context window is nowhere close to this, so
+   this is generous headroom, not a real budget. */
+const MAX_CHAT_CONTEXT = 150000;
 
 const BOARD_CHAT_SYSTEM = [
   'You help a tax professional (Rafay, Trello handle @rafay10) work through his Nudge Kanban board.',

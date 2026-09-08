@@ -204,6 +204,11 @@
   .chat-foot textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px;
     border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--fg);
     resize: vertical; min-height: 44px; }
+  /* Without this the browser's own default focus ring shows instead — a
+     plain white/gray rectangle that clashes hard against a dark,
+     orange-accented panel. */
+  .chat-foot textarea:focus { outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft); }
   .chat-acts { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
   .chat-acts button { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px;
     border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
