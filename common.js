@@ -3780,9 +3780,10 @@ var QA = (function () {
     'Rules:',
     '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
     '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
-    '3. Be brief and concrete — name the card/client, and quote a relevant fragment rather than paraphrasing away specifics.',
-    '4. When asked what needs attention, prefer overdue and soon-due cards first.',
-    '5. Plain prose or short bullets. No preamble, no restating the question, no markdown headers.'
+    '3. Answer the way you would explain it to him out loud — a short, natural summary of what matters, never a field-by-field readout of the CONTEXT and never restructured into headers or a list that mirrors its shape.',
+    '4. Be brief and specific — name the card or client and the one or two things that actually matter (what is being asked for, who is waiting on what, when it is due); quote an exact phrase only when the wording itself matters.',
+    '5. When asked what needs attention, prefer overdue and soon-due cards first.',
+    '6. Plain sentences only, no exceptions: never use markdown — no **bold**, no asterisks of any kind, no # headers, no bullet lists.'
   ].join('\n');
 
   function labelFor(list, id) {
@@ -3790,27 +3791,26 @@ var QA = (function () {
     return found ? found.label : id;
   }
 
-  /* MAX_CONTEXT (14000 chars) is sized for the ask-a-question feature above,
-     which only ever looks at one search result's worth of Trello
-     notifications at a time — nowhere near enough for a whole board. A
-     board with a couple dozen cards, several carrying a full synced
-     comment thread, blows past 14000 characters well before the loop below
-     reaches an older card, silently dropping it from what the model ever
-     sees — it then correctly (and confusingly) reports that card as
-     "not mentioned" even though it's sitting right there on the board.
-     Gemini's actual context window is nowhere close to this limit, so this
-     is just generous headroom, not a real budget. */
-  const MAX_BOARD_CHAT_CONTEXT = 150000;
+  /* Sending every synced comment thread in full, for every card, is what
+     made a 20-30 card board slow to answer at all — most of that bulk is
+     rarely what a given question is actually about. Headers (board/column/
+     due date/name) are cheap and always included, uncapped, so "is X on
+     the board" is never wrong just because some other card's comment
+     thread used up the budget first. The much heavier notes/comments are
+     what this budget actually limits — once it's spent, later cards still
+     get their header line, just without the detail underneath. */
+  const MAX_BOARD_CHAT_DETAIL = 16000;
+  /* A backstop against a pathological number of cards, not a real budget —
+     even a couple hundred header-only lines stays well under this. */
+  const MAX_BOARD_CHAT_CONTEXT = 60000;
 
   /* Every card currently loaded, flattened into one text block the model can
      ground answers in — same idea as buildContext above, just built from
-     board cards instead of the Trello notifications page. Caps at
-     MAX_BOARD_CHAT_CONTEXT, oldest/least-relevant detail dropped first by
-     simply stopping once the budget's spent rather than trying to be clever
-     about which cards matter most. */
+     board cards instead of the Trello notifications page. */
   function buildBoardChatContext(cards) {
     const list = cards || [];
     const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
+    let detailBudget = MAX_BOARD_CHAT_DETAIL;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
       const boardId = (c.board && BOARDS.some(function (b) { return b.id === c.board; })) ? c.board : 'main';
@@ -3819,16 +3819,24 @@ var QA = (function () {
       const name = c.context || c.title || 'Untitled';
       out.push('- [' + labelFor(BOARDS, boardId) + ' / ' + labelFor(cols, colId) + ']' +
         (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
+      if (detailBudget <= 0) continue;
       const note = tidyCommentText(c.body || '').trim();
-      if (note) out.push('  NOTE: ' + note.slice(0, 300));
+      if (note) {
+        const line = '  NOTE: ' + note.slice(0, 300);
+        out.push(line);
+        detailBudget -= line.length;
+      }
       if (Array.isArray(c.comments) && c.comments.length) {
         c.comments.slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); }).slice(0, 5)
           .forEach(function (cm) {
+            if (detailBudget <= 0) return;
             const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
-            if (text) out.push('  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300));
+            if (!text) return;
+            const line = '  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300);
+            out.push(line);
+            detailBudget -= line.length;
           });
       }
-      if (out.join('\n').length > MAX_BOARD_CHAT_CONTEXT) { out.push('- …(truncated)'); break; }
     }
     let ctx = out.join('\n');
     if (ctx.length > MAX_BOARD_CHAT_CONTEXT) ctx = ctx.slice(0, MAX_BOARD_CHAT_CONTEXT) + '\n…(truncated)';

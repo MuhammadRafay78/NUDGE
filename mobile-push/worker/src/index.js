@@ -41,13 +41,18 @@ const BOARD_LABELS = { main: 'Main', qtm: 'QTM', taxplan: 'Tax Plan Draft', acti
 const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', done: 'Done' };
 const ACTION_ITEMS_COLUMN_IDS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const DEFAULT_COLUMN_IDS = ['inbox', 'doing', 'done'];
-/* A board with a couple dozen cards, several carrying a full synced comment
-   thread, can easily run past a small budget here before the loop below
-   reaches an older card — it then silently never reaches the model at all,
-   which answers "not mentioned" about a card that's sitting right there on
-   the board. Gemini's real context window is nowhere close to this, so
-   this is generous headroom, not a real budget. */
-const MAX_CHAT_CONTEXT = 150000;
+/* Sending every synced comment thread in full, for every card, is what
+   makes a 20-30 card board slow to answer at all — most of that bulk is
+   rarely what a given question is actually about. Headers (board/column/
+   due date/name) are cheap and always included, uncapped, so "is X on the
+   board" is never wrong just because some other card's comment thread
+   used up the budget first. MAX_CHAT_DETAIL is what actually limits the
+   much heavier notes/comments — once it's spent, later cards still get
+   their header line, just without the detail underneath.
+   MAX_CHAT_CONTEXT below is only a backstop against a pathological number
+   of cards, not a real budget. */
+const MAX_CHAT_DETAIL = 16000;
+const MAX_CHAT_CONTEXT = 60000;
 
 const BOARD_CHAT_SYSTEM = [
   'You help a tax professional (Rafay, Trello handle @rafay10) work through his Nudge Kanban board.',
@@ -55,15 +60,17 @@ const BOARD_CHAT_SYSTEM = [
   'Rules:',
   '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
   '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
-  '3. Be brief and concrete — name the card/client, and quote a relevant fragment rather than paraphrasing away specifics.',
-  '4. When asked what needs attention, prefer overdue and soon-due cards first.',
-  '5. Plain prose or short bullets. No preamble, no restating the question, no markdown headers.'
+  '3. Answer the way you would explain it to him out loud — a short, natural summary of what matters, never a field-by-field readout of the CONTEXT and never restructured into headers or a list that mirrors its shape.',
+  '4. Be brief and specific — name the card or client and the one or two things that actually matter (what is being asked for, who is waiting on what, when it is due); quote an exact phrase only when the wording itself matters.',
+  '5. When asked what needs attention, prefer overdue and soon-due cards first.',
+  '6. Plain sentences only, no exceptions: never use markdown — no **bold**, no asterisks of any kind, no # headers, no bullet lists.'
 ].join('\n');
 
 function buildBoardChatContext(cards, boardLabels) {
   const labels = boardLabels || BOARD_LABELS;
   const list = cards || [];
   const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
+  let detailBudget = MAX_CHAT_DETAIL;
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
     const boardId = labels[c.board] ? c.board : 'main';
@@ -72,15 +79,23 @@ function buildBoardChatContext(cards, boardLabels) {
     const name = c.context || c.title || 'Untitled';
     out.push('- [' + (labels[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
       (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
+    if (detailBudget <= 0) continue;
     const note = String(c.body || '').replace(/\s+/g, ' ').trim();
-    if (note) out.push('  NOTE: ' + note.slice(0, 300));
+    if (note) {
+      const line = '  NOTE: ' + note.slice(0, 300);
+      out.push(line);
+      detailBudget -= line.length;
+    }
     if (Array.isArray(c.comments) && c.comments.length) {
       c.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 5).forEach((cm) => {
+        if (detailBudget <= 0) return;
         const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
-        if (text) out.push('  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300));
+        if (!text) return;
+        const line = '  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300);
+        out.push(line);
+        detailBudget -= line.length;
       });
     }
-    if (out.join('\n').length > MAX_CHAT_CONTEXT) { out.push('- …(truncated)'); break; }
   }
   let ctx = out.join('\n');
   if (ctx.length > MAX_CHAT_CONTEXT) ctx = ctx.slice(0, MAX_CHAT_CONTEXT) + '\n…(truncated)';
