@@ -8,6 +8,8 @@ const crypto = require('crypto');
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'subscriptions.json');
 const BOARD_FILE = path.join(__dirname, 'boards.json');
+const CUSTOM_BOARDS_FILE = path.join(__dirname, 'customBoards.json');
+const MAX_CUSTOM_BOARDS = 40;
 /* 'waiting' ("Waiting for info") only ever shows up as a column on the
    Action Items board — the client (both boards' cardColumn()) already
    falls back to Doing for any card whose column doesn't exist on its own
@@ -87,16 +89,17 @@ const BOARD_CHAT_SYSTEM = [
 
 /* Same shape as the extension's buildBoardChatContext (common.js) — kept in
    sync by hand since this server has no access to that file. */
-function buildBoardChatContext(cards) {
+function buildBoardChatContext(cards, boardLabels) {
+  const labels = boardLabels || BOARD_LABELS;
   const list = cards || [];
   const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
-    const boardId = BOARDS.includes(c.board) ? c.board : 'main';
+    const boardId = labels[c.board] ? c.board : 'main';
     const colIds = boardId === 'actionitems' ? ACTION_ITEMS_COLUMN_IDS : DEFAULT_COLUMN_IDS;
     const colId = colIds.includes(c.column) ? c.column : 'doing';
     const name = c.context || c.title || 'Untitled';
-    out.push('- [' + (BOARD_LABELS[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
+    out.push('- [' + (labels[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
       (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
     const note = String(c.body || '').replace(/\s+/g, ' ').trim();
     if (note) out.push('  NOTE: ' + note.slice(0, 300));
@@ -149,6 +152,33 @@ function saveBoards(boards) {
   fs.writeFileSync(BOARD_FILE, JSON.stringify(boards, null, 2));
 }
 
+/* ---------- custom board tabs, added by name from outside Nudge ----------
+   The built-in four (BOARDS above) are fixed; this is for a tab added by
+   something else entirely — a Google Sheet's Apps Script trigger POSTing
+   here is the case README.md walks through, but anything that already has
+   the pairing code can add one. Kept in its own file, one list per code,
+   rather than folded into boards.json's card-list shape, so that shape
+   never has to change to fit this. */
+
+function loadCustomBoards() {
+  try { return JSON.parse(fs.readFileSync(CUSTOM_BOARDS_FILE, 'utf8')); } catch (e) { return {}; }
+}
+
+function saveCustomBoards(data) {
+  fs.writeFileSync(CUSTOM_BOARDS_FILE, JSON.stringify(data, null, 2));
+}
+
+function slugifyBoardName(name) {
+  return String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+}
+
+/* Every board id valid for this code right now — the fixed four plus
+   whatever's been added for it — used to validate a card's `board` field
+   the same way BOARDS alone used to. */
+function allBoardIds(code) {
+  return BOARDS.concat((loadCustomBoards()[code] || []).map((b) => b.id));
+}
+
 function addCard(code, patch) {
   const boards = loadBoards();
   const cards = boards[code] || (boards[code] = []);
@@ -166,7 +196,7 @@ function addCard(code, patch) {
     notifId: (patch.notifId || '').slice(0, 60),
     actorUser: (patch.actorUser || '').slice(0, 60),
     column: COLUMNS.includes(patch.column) ? patch.column : 'inbox',
-    board: BOARDS.includes(patch.board) ? patch.board : 'main',
+    board: allBoardIds(code).includes(patch.board) ? patch.board : 'main',
     createdAt: now,
     updatedAt: now
   };
@@ -244,7 +274,40 @@ app.get('/api/cards', (req, res) => {
   const code = String(req.query.code || '').toUpperCase();
   if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
   const boards = loadBoards();
-  res.json({ ok: true, cards: boards[code] || [] });
+  res.json({ ok: true, cards: boards[code] || [], customBoards: loadCustomBoards()[code] || [] });
+});
+
+/* Lets something outside Nudge add a board tab by name — a Google Sheet's
+   Apps Script trigger POSTing here on every new row is the case
+   README.md walks through ("Add a board from a Google Sheet"), so a new
+   tab shows up on that code's board without anyone touching the extension
+   or this server by hand. The pairing code is the only credential this
+   needs, same as every other endpoint here — anyone who already has it
+   can already read and write that code's cards. Upserts by slug, so
+   sending the same name again (a trigger re-firing, a row edited back to
+   what it was) relabels the existing tab instead of duplicating it. */
+app.post('/api/boards', (req, res) => {
+  const code = String((req.body && req.body.code) || '').toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ ok: false, error: 'Missing board name.' });
+  const id = slugifyBoardName(name);
+  if (!id) return res.status(400).json({ ok: false, error: 'That name has no letters or numbers to build a board id from.' });
+  if (BOARDS.includes(id)) return res.status(400).json({ ok: false, error: 'That name collides with a built-in board.' });
+
+  const all = loadCustomBoards();
+  const list = all[code] || (all[code] = []);
+  const existing = list.find((b) => b.id === id);
+  if (existing) {
+    existing.label = name;
+  } else {
+    if (list.length >= MAX_CUSTOM_BOARDS) {
+      return res.status(400).json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' });
+    }
+    list.push({ id: id, label: name, addedAt: Date.now() });
+  }
+  saveCustomBoards(all);
+  res.json({ ok: true, board: { id: id, label: name } });
 });
 
 /* Read-only mirror of the extension's fetchCardWhole() (common.js) — same
@@ -306,7 +369,9 @@ app.post('/api/ask', async (req, res) => {
   const history = Array.isArray(req.body && req.body.history) ? req.body.history : [];
 
   const boards = loadBoards();
-  const context = buildBoardChatContext(boards[code] || []);
+  const boardLabels = Object.assign({}, BOARD_LABELS);
+  (loadCustomBoards()[code] || []).forEach((b) => { boardLabels[b.id] = b.label; });
+  const context = buildBoardChatContext(boards[code] || [], boardLabels);
 
   const contents = [];
   history.slice(-6).forEach((h) => {
@@ -358,7 +423,7 @@ app.patch('/api/cards/:id', (req, res) => {
   if (body.column !== undefined && !COLUMNS.includes(body.column)) {
     return res.status(400).json({ ok: false, error: 'Invalid column.' });
   }
-  if (body.board !== undefined && !BOARDS.includes(body.board)) {
+  if (body.board !== undefined && !allBoardIds(code).includes(body.board)) {
     return res.status(400).json({ ok: false, error: 'Invalid board.' });
   }
 

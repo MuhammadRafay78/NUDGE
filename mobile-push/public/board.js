@@ -39,12 +39,21 @@ const BOARDS = [
   { id: 'taxplan', label: 'Tax Plan Draft' },
   { id: 'actionitems', label: 'Action Items' }
 ];
+/* Board tabs someone's added by name from outside Nudge — a Google Sheet
+   is the built-in example (see README > "Add a board from a Google
+   Sheet"), fetched alongside the cards themselves on every load() and
+   kept here rather than merged into the fixed BOARDS array, since that
+   one's also relied on elsewhere (e.g. keyword routing) to mean "the
+   built-in four". */
+let customBoards = [];
+function allBoards() { return BOARDS.concat(customBoards); }
+
 /* A card with no .board (filed before boards existed) or one that names a
    board that's since been retired (e.g. the old "masterdata", or "slack" —
    Slack-sourced cards go through normal routing now) falls back to Main
    instead of vanishing from every tab. */
 function cardBoard(c) {
-  return (c.board && BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
+  return (c.board && allBoards().some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
 /* A card whose column doesn't exist on its own board — the old 'action'
@@ -127,8 +136,12 @@ const chatClear = document.getElementById('chatClear');
 const chatClose = document.getElementById('chatClose');
 const chatStatus = document.getElementById('chatStatus');
 
+/* Not validated here against allBoards() — customBoards is still empty
+   this early (nothing's been fetched yet), so a stored custom board id
+   would look invalid and get bounced to Main before it ever gets a
+   chance. render() re-checks this on every load() once the real list is
+   known, which is the only point it can be checked correctly. */
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
-if (!BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 
 const SORT_MODES = ['due', 'added'];
 let sortMode = localStorage.getItem('nudgeSortMode') || 'due';
@@ -173,6 +186,7 @@ async function api(path, options) {
 
 async function fetchCards() {
   const data = await api('/api/cards?code=' + encodeURIComponent(code));
+  customBoards = data.customBoards || [];
   return data.cards || [];
 }
 
@@ -215,7 +229,7 @@ function itemHtml(card) {
   const options = columnsForBoard(cardBoard(card)).map((c) =>
     '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
-  const boardOptions = BOARDS.map((b) =>
+  const boardOptions = allBoards().map((b) =>
     '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
   ).join('');
   const body = card.body || '';
@@ -528,7 +542,7 @@ function matchesSearch(card, terms) {
 }
 
 function renderBoardTabs(cards) {
-  boardTabsEl.innerHTML = BOARDS.map((b) => {
+  boardTabsEl.innerHTML = allBoards().map((b) => {
     const n = cards.filter((c) => cardBoard(c) === b.id).length;
     return '<button class="board-tab' + (b.id === activeBoard ? ' on' : '') + '" data-board="' + b.id + '">' +
       esc(b.label) + ' <span class="n">' + n + '</span></button>';
@@ -545,6 +559,11 @@ boardTabsEl.addEventListener('click', (e) => {
 
 function render(cards) {
   lastCards = cards;
+  /* Re-checked here rather than only once at page load, since a stored
+     activeBoard naming a custom board isn't known to be valid until the
+     first fetch actually reports it — customBoards is still empty the
+     moment the page starts. */
+  if (!allBoards().some((b) => b.id === activeBoard)) activeBoard = 'main';
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card moved/deleted elsewhere

@@ -3303,7 +3303,7 @@ var QA = (function () {
     const cx = await boardBase();
     if (!cx) throw new Error('Fill in the server address and pairing code in Settings first.');
     const { data } = await boardApi('/api/cards?code=' + encodeURIComponent(cx.code));
-    return data.cards || [];
+    return { cards: data.cards || [], customBoards: data.customBoards || [] };
   }
 
   /* fields: { title, body, url, column, context, due, cardId, actorUser } —
@@ -3350,7 +3350,7 @@ var QA = (function () {
          out of Doing, but still refresh the text and notifId so marking it
          handled later points at this newest mention, not a stale one. */
       if (f.cardId) {
-        const existing = (await fetchCards().catch(() => []))
+        const existing = (await fetchCards().catch(() => ({ cards: [] }))).cards
           .find((c) => c.cardId === f.cardId);
         if (existing) {
           const patch = {
@@ -3430,7 +3430,7 @@ var QA = (function () {
   async function syncBoardAfterReply(cardId) {
     if (!cardId) return;
     try {
-      const cards = await fetchCards();
+      const cards = (await fetchCards()).cards;
       const mine = cards.filter((c) => c.cardId === cardId && c.column !== 'done');
       await Promise.all(mine.map((c) => moveCard(c.id, 'done').catch(() => {})));
     } catch (e) { /* no board configured, or unreachable — nothing to sync */ }

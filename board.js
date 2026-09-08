@@ -70,12 +70,21 @@ let replyDraft = null;           // live text of the modal's reply box — the m
                                   // modal's own comment-list reload does rebuild it, hence tracking this
 let attachedImage = null;        // { file, previewUrl } picked for the modal's reply box, or null
 
+/* Board tabs added by name from outside Nudge — a Google Sheet is the
+   built-in example (mobile-push/README.md > "Add a board from a Google
+   Sheet"), fetched alongside the cards themselves on every load() below.
+   Kept separate from QA.BOARDS rather than merged into it, since that one
+   is also relied on elsewhere (keyword routing) to mean specifically the
+   built-in four. */
+let customBoards = [];
+function allBoards() { return QA.BOARDS.concat(customBoards); }
+
 /* Main vs QTM vs Tax Plan Draft — three boards sharing the same four
    columns. A card with no .board (filed before boards existed) or one
    that names a board that's since been retired (e.g. the old
    "masterdata") falls back to Main instead of vanishing from every tab. */
 function cardBoard(c) {
-  return (c.board && QA.BOARDS.some((b) => b.id === c.board)) ? c.board : 'main';
+  return (c.board && allBoards().some((b) => b.id === c.board)) ? c.board : 'main';
 }
 
 /* A card whose column doesn't exist on its own board — the old 'action'
@@ -136,11 +145,15 @@ function sortCards(items) {
     : items.slice().sort((a, b) => dueSortValue(a) - dueSortValue(b));
 }
 
+/* Not validated against allBoards() here — customBoards is still empty
+   this early (nothing's been fetched yet), so a stored custom board id
+   would look invalid and get bounced to Main before it ever gets a
+   chance. render() re-checks this on every load() once the real list is
+   known, which is the only point it can be checked correctly. */
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
-if (!QA.BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
 
 function renderBoardTabs(cards) {
-  boardTabsEl.innerHTML = QA.BOARDS.map((b) => {
+  boardTabsEl.innerHTML = allBoards().map((b) => {
     const n = cards.filter((c) => cardBoard(c) === b.id).length;
     return '<button class="board-tab' + (b.id === activeBoard ? ' on' : '') + '" data-board="' + b.id + '">' +
       esc(b.label) + ' <span class="n">' + n + '</span></button>';
@@ -275,7 +288,7 @@ function itemHtml(card, terms) {
   const moveOptions = QA.columnsForBoard(cardBoard(card)).map((c) =>
     '<option value="' + c.id + '"' + (c.id === cardColumn(card) ? ' selected' : '') + '>' + c.label + '</option>'
   ).join('');
-  const boardOptions = QA.BOARDS.map((b) =>
+  const boardOptions = allBoards().map((b) =>
     '<option value="' + b.id + '"' + (b.id === cardBoard(card) ? ' selected' : '') + '>' + b.label + '</option>'
   ).join('');
   return (
@@ -528,6 +541,11 @@ function addCardFooterHtml(colId) {
 
 function render(cards) {
   lastCards = cards;
+  /* Re-checked here rather than only once at page load, since a stored
+     activeBoard naming a custom board isn't known to be valid until the
+     first fetch actually reports it — customBoards is still empty the
+     moment the page starts. */
+  if (!allBoards().some((b) => b.id === activeBoard)) activeBoard = 'main';
   cardsById = {};
   cards.forEach((c) => { cardsById[c.id] = c; });
   if (modalCardId && !cardsById[modalCardId]) closeModal();   // card deleted elsewhere
@@ -1412,10 +1430,11 @@ chrome.storage.local.get({ dailyUpdateDraft: null }).then((got) => {
 async function load() {
   if (dragging) return;
   try {
-    const cards = await QA.fetchCards();
+    const got = await QA.fetchCards();
+    customBoards = got.customBoards;
     warnEl.hidden = true;
-    statusEl.textContent = cards.length + ' card' + (cards.length === 1 ? '' : 's');
-    render(cards);
+    statusEl.textContent = got.cards.length + ' card' + (got.cards.length === 1 ? '' : 's');
+    render(got.cards);
   } catch (err) {
     warnEl.hidden = false;
     statusEl.textContent = '';
