@@ -317,19 +317,23 @@ app.post('/api/boards', (req, res) => {
   if (!id) return res.status(400).json({ ok: false, error: 'That name has no letters or numbers to build a board id from.' });
   if (BOARDS.includes(id)) return res.status(400).json({ ok: false, error: 'That name collides with a built-in board.' });
 
-  const all = loadCustomBoards();
-  const list = all[code] || (all[code] = []);
-  const existing = list.find((b) => b.id === id);
-  if (existing) {
-    existing.label = name;
-  } else {
-    if (list.length >= MAX_CUSTOM_BOARDS) {
-      return res.status(400).json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' });
+  try {
+    const all = loadCustomBoards();
+    const list = all[code] || (all[code] = []);
+    const existing = list.find((b) => b.id === id);
+    if (existing) {
+      existing.label = name;
+    } else {
+      if (list.length >= MAX_CUSTOM_BOARDS) {
+        return res.status(400).json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' });
+      }
+      list.push({ id: id, label: name, addedAt: Date.now() });
     }
-    list.push({ id: id, label: name, addedAt: Date.now() });
+    saveCustomBoards(all);
+    res.json({ ok: true, board: { id: id, label: name } });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String((e && e.message) || e) });
   }
-  saveCustomBoards(all);
-  res.json({ ok: true, board: { id: id, label: name } });
 });
 
 /* Read-only mirror of the extension's fetchCardWhole() (common.js) — same
