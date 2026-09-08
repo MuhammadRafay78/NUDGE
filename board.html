@@ -207,6 +207,15 @@
       padding: 10px 14px; font-size: 14.5px; line-height: 1.6; max-width: 88%; overflow-wrap: anywhere; }
     .chat-msg.user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent); }
     .chat-msg.ai { align-self: flex-start; }
+    /* Own copy of the modal's bullet/paragraph look, scoped to a chat
+       bubble instead of .modal-item — a chat answer was rendered with the
+       same hist-li/hist-p markup as a comment, but those are only ever
+       styled under .modal-item, so an AI answer's bullets showed up as
+       plain unmarked lines with no dot, no spacing. */
+    .chat-msg .li { position: relative; margin: 4px 0; padding-left: 15px; }
+    .chat-msg .li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
+    .chat-msg .p { margin: 6px 0; }
+    .chat-msg > div:first-child { margin-top: 0 !important; }
     /* A pulsing three-dot bubble while waiting on an answer — same shape as
        an AI reply, so it reads as "it's typing" rather than a bare status
        line off to the side. */

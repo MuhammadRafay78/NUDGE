@@ -1140,12 +1140,33 @@ clearBtn.addEventListener('click', async () => {
 let chatHistory = [];   // [{role:'user'|'model', content}]
 let chatThinking = false;   // shows a typing-dots bubble while a question is in flight
 
+/* formatCommentHtml is built for a raw Trello note — one wall of text
+   with no real line breaks, so it has to guess where a bullet or sentence
+   boundary belongs, including treating any " - " as a bullet delimiter.
+   A Gemini answer already arrives with its own real newlines (the model
+   is told to put each point on its own "- "-prefixed line), so re-running
+   it through those same guesses does more harm than good — it mistook a
+   client's own hyphenated name ("Hilary&Nick Madsen - JD") for a bullet
+   break and split it into two lines. This trusts the model's line breaks
+   instead of re-inferring them. */
+function formatChatHtml(text) {
+  if (!text) return '<div class="p">No answer.</div>';
+  const t = esc(text).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(?<!\w)_|_(?!\w)/g, '');
+  const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="p">No answer.</div>';
+  return lines.map((line) =>
+    line.indexOf('- ') === 0
+      ? '<div class="li">' + line.slice(2) + '</div>'
+      : '<div class="p">' + line + '</div>'
+  ).join('');
+}
+
 function renderChat() {
   /* No separate placeholder paragraph here — the textarea's own
      placeholder already says this, and repeating it as a second wall of
      text right above an empty message list was just visual clutter. */
   const bubbles = chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
-    formatCommentHtml(m.content) + '</div>').join('');
+    formatChatHtml(m.content) + '</div>').join('');
   /* Same shape as an AI reply, so it reads as "it's answering" rather than
      a separate status line — matches the typing indicator every real chat
      app uses instead of a bare "Thinking…" caption. */

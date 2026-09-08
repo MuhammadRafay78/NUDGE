@@ -517,10 +517,31 @@ document.addEventListener('keydown', (e) => {
 
 let chatHistory = [];   // [{role:'user'|'model', content}]
 
+/* formatBodyHtml is built for a raw Trello note — one wall of text with
+   no real line breaks, so it has to guess where a bullet or sentence
+   boundary belongs, including treating any " - " as a bullet delimiter.
+   A Gemini answer already arrives with its own real newlines (the model
+   is told to put each point on its own "- "-prefixed line), so re-running
+   it through those same guesses does more harm than good — it mistook a
+   client's own hyphenated name ("Hilary&Nick Madsen - JD") for a bullet
+   break and split it into two lines. This trusts the model's line breaks
+   instead of re-inferring them. */
+function formatChatHtml(text) {
+  if (!text) return '<div class="p">No answer.</div>';
+  const t = esc(text).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(?<!\w)_|_(?!\w)/g, '');
+  const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="p">No answer.</div>';
+  return lines.map((line) =>
+    line.indexOf('- ') === 0
+      ? '<div class="li">' + line.slice(2) + '</div>'
+      : '<div class="p">' + line + '</div>'
+  ).join('');
+}
+
 function renderChatMessages() {
   chatMessages.innerHTML = chatHistory.length
     ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
-        formatBodyHtml(m.content) + '</div>').join('')
+        formatChatHtml(m.content) + '</div>').join('')
     : '<div class="empty">Ask something about the cards on this board — due dates, who’s waiting on what, what’s overdue…</div>';
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
