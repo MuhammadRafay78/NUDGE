@@ -221,6 +221,27 @@ account. Leave both unset to skip this entirely — the board still shows
 whatever the extension has already synced, and otherwise falls back to
 the stored snippet, same as before either of these existed.
 
+### Ask the board
+
+Both boards have a **💬 Ask** button — a chat, grounded only in the cards
+actually on the board (title, due date, board/column, and any synced
+comment thread), not a general assistant. It won't answer anything the
+board data doesn't already say.
+
+On the extension's board this reuses the same Gemini key as **Settings →
+Sort mentions** — nothing extra to set up if you already use that. On the
+shareable board it's a separate piece: this page has no key of its own to
+hold, so the server needs `GEMINI_API_KEY` set for its **Ask the board**
+button to work:
+
+1. Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. Set it as `GEMINI_API_KEY` — in `.env` for Option A, or
+   `npx wrangler secret put GEMINI_API_KEY` for Option B.
+
+Leave it unset to skip this on the shareable board — its Ask button just
+says the server isn't set up for it yet; the extension's own Ask button is
+unaffected either way, since it never goes through this server at all.
+
 ## API
 
 | Route | Body | Does |
@@ -234,6 +255,7 @@ the stored snippet, same as before either of these existed.
 | `PATCH /api/cards/:id` | `{ code, ...fields }` | Updates any subset of a card's fields — `column` (`inbox`\|`doing`\|`waiting`\|`done` — `waiting` only shown on the Action Items board), `board`, or others including `comments` (the extension syncing a card's Trello thread) |
 | `DELETE /api/cards/:id` | `{ code }` | Removes a card |
 | `GET /api/trello-card?cardId=` | — | A card's full comment thread from Trello — 501 if `TRELLO_API_KEY`/`TRELLO_TOKEN` aren't set |
+| `POST /api/ask` | `{ code, question, history? }` | Answers a question grounded in that code's board cards — 501 if `GEMINI_API_KEY` isn't set |
 
 `code` is an 8-character pairing secret (`newCode()` in `server.js`) — anyone
 who has it can push notifications to that phone, so treat it like a password

@@ -61,6 +61,66 @@ if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
 const TRELLO_API_KEY = process.env.TRELLO_API_KEY || '';
 const TRELLO_TOKEN = process.env.TRELLO_TOKEN || '';
 
+/* Optional, third piece — a Gemini-backed chat grounded in this code's own
+   board cards, mirroring the extension's "Ask the board" (common.js,
+   askGeminiAboutBoard/buildBoardChatContext) for the shareable link, which
+   has no Gemini key of its own to hold. Off by default, same spirit as the
+   Trello credentials above: unset, /api/ask just says so. */
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+
+const BOARD_LABELS = { main: 'Main', qtm: 'QTM', taxplan: 'Tax Plan Draft', actionitems: 'Action Items' };
+const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', done: 'Done' };
+const ACTION_ITEMS_COLUMN_IDS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
+const DEFAULT_COLUMN_IDS = ['inbox', 'doing', 'done'];
+const MAX_CHAT_CONTEXT = 14000;
+
+const BOARD_CHAT_SYSTEM = [
+  'You help a tax professional (Rafay, Trello handle @rafay10) work through his Nudge Kanban board.',
+  'You are given a CONTEXT block: every card currently on the board he is looking at — its board (Main/QTM/Tax Plan Draft/Action Items), column, due date, its own note, and its comment thread where one has been synced.',
+  'Rules:',
+  '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
+  '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
+  '3. Be brief and concrete — name the card/client, and quote a relevant fragment rather than paraphrasing away specifics.',
+  '4. When asked what needs attention, prefer overdue and soon-due cards first.',
+  '5. Plain prose or short bullets. No preamble, no restating the question, no markdown headers.'
+].join('\n');
+
+/* Same shape as the extension's buildBoardChatContext (common.js) — kept in
+   sync by hand since this server has no access to that file. */
+function buildBoardChatContext(cards) {
+  const list = cards || [];
+  const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    const boardId = BOARDS.includes(c.board) ? c.board : 'main';
+    const colIds = boardId === 'actionitems' ? ACTION_ITEMS_COLUMN_IDS : DEFAULT_COLUMN_IDS;
+    const colId = colIds.includes(c.column) ? c.column : 'doing';
+    const name = c.context || c.title || 'Untitled';
+    out.push('- [' + (BOARD_LABELS[boardId] || boardId) + ' / ' + (COLUMN_LABELS[colId] || colId) + ']' +
+      (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
+    const note = String(c.body || '').replace(/\s+/g, ' ').trim();
+    if (note) out.push('  NOTE: ' + note.slice(0, 300));
+    if (Array.isArray(c.comments) && c.comments.length) {
+      c.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 5).forEach((cm) => {
+        const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
+        if (text) out.push('  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300));
+      });
+    }
+    if (out.join('\n').length > MAX_CHAT_CONTEXT) { out.push('- …(truncated)'); break; }
+  }
+  let ctx = out.join('\n');
+  if (ctx.length > MAX_CHAT_CONTEXT) ctx = ctx.slice(0, MAX_CHAT_CONTEXT) + '\n…(truncated)';
+  return ctx;
+}
+
+function geminiErrorMessage(status, detail) {
+  if (status === 400 && /API key not valid/i.test(detail || '')) return 'That Gemini key was not accepted.';
+  if (status === 401 || status === 403) return 'That Gemini key was not accepted.';
+  if (status === 429) return 'Gemini is rate-limiting — try again shortly.';
+  if (status >= 500) return 'Google had a problem (' + status + ').';
+  return 'Gemini said no (' + status + ')' + (detail ? ': ' + detail.slice(0, 120) : '');
+}
+
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
 function loadStore() {
@@ -224,6 +284,63 @@ app.get('/api/trello-card', async (req, res) => {
     res.json({ ok: true, comments: comments });
   } catch (e) {
     res.status(502).json({ ok: false, error: String((e && e.message) || e) });
+  }
+});
+
+/* The shareable board's own "Ask the board" — same idea as the extension's
+   (common.js, askGeminiAboutBoard), just run here since this page has no
+   Gemini key of its own to hold. Builds the context itself from this
+   code's stored cards rather than trusting whatever the client sends, so
+   the grounding always matches what's actually on the board. */
+app.post('/api/ask', async (req, res) => {
+  if (!GEMINI_API_KEY) {
+    return res.status(501).json({
+      ok: false,
+      error: 'This server has no Gemini key set up yet (GEMINI_API_KEY) — see mobile-push/README.md.'
+    });
+  }
+  const code = String((req.body && req.body.code) || '').toUpperCase();
+  if (!code) return res.status(400).json({ ok: false, error: 'Missing code.' });
+  const question = String((req.body && req.body.question) || '').trim();
+  if (!question) return res.status(400).json({ ok: false, error: 'Missing question.' });
+  const history = Array.isArray(req.body && req.body.history) ? req.body.history : [];
+
+  const boards = loadBoards();
+  const context = buildBoardChatContext(boards[code] || []);
+
+  const contents = [];
+  history.slice(-6).forEach((h) => {
+    if (h && h.content) contents.push({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: String(h.content) }] });
+  });
+  contents.push({
+    role: 'user',
+    parts: [{ text: 'CONTEXT (the only data you may use):\n' + context + '\n\nQUESTION: ' + question }]
+  });
+
+  try {
+    const r = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: BOARD_CHAT_SYSTEM }] },
+          contents: contents,
+          generationConfig: { temperature: 0.2, maxOutputTokens: 800 }
+        })
+      }
+    );
+    if (!r.ok) {
+      let detail = '';
+      try { const b = await r.json(); detail = (b && b.error && b.error.message) || ''; } catch (e) {}
+      return res.status(r.status).json({ ok: false, error: geminiErrorMessage(r.status, detail) });
+    }
+    const body = await r.json();
+    const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
+    const answer = parts.map((p) => p.text || '').join('').trim();
+    res.json({ ok: true, answer: answer || '(no answer)' });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: 'Could not reach Gemini: ' + String((e && e.message) || e) });
   }
 });
 
