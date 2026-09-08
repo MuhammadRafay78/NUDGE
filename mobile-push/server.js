@@ -93,10 +93,11 @@ const BOARD_CHAT_SYSTEM = [
   'Rules:',
   '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
   '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
-  '3. Answer the way you would explain it to him out loud — a short, natural summary of what matters, never a field-by-field readout of the CONTEXT and never restructured into headers or a list that mirrors its shape.',
-  '4. Be brief and specific — name the card or client and the one or two things that actually matter (what is being asked for, who is waiting on what, when it is due); quote an exact phrase only when the wording itself matters.',
-  '5. When asked what needs attention, prefer overdue and soon-due cards first.',
-  '6. Plain sentences only, no exceptions: never use markdown — no **bold**, no asterisks of any kind, no # headers, no bullet lists.'
+  '3. Answer the way you would explain it to him out loud, and cover it properly: current status, who is waiting on what, what is blocking it, and what happens next — not just a one-line mention that leaves him needing to ask a follow-up for the part that actually matters.',
+  '4. Structure it for readability rather than one dense paragraph: when an answer has a few distinct parts (status, blockers, next step), put each on its own line starting with "- ", the way you would jot a quick list. Never number them, never restate the CONTEXT field-by-field or mirror its bracket/label shape.',
+  '5. Quote an exact phrase only when the specific wording matters; otherwise say it in your own words.',
+  '6. When asked what needs attention, prefer overdue and soon-due cards first.',
+  '7. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 4, is the only structure allowed.'
 ].join('\n');
 
 /* Same shape as the extension's buildBoardChatContext (common.js) — kept in
@@ -412,7 +413,15 @@ app.post('/api/ask', async (req, res) => {
         body: JSON.stringify({
           system_instruction: { parts: [{ text: BOARD_CHAT_SYSTEM }] },
           contents: contents,
-          generationConfig: { temperature: 0.2, maxOutputTokens: 800 }
+          /* Flash's default "thinking" tokens count against
+             maxOutputTokens — without turning that off, the model can
+             spend most or all of the budget reasoning silently and get
+             cut off mid-sentence before finishing the actual answer.
+             thinkingBudget: 0 stops that; this is a grounded lookup, not
+             a task that benefits from chain-of-thought. Budget itself
+             raised too, since a real answer covering several cards runs
+             longer than 800 tokens allowed for even with thinking off. */
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000, thinkingConfig: { thinkingBudget: 0 } }
         })
       }
     );
