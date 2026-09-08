@@ -1,13 +1,18 @@
 :root {
   --bg: #ffffff;
-  --card: #ffffff;
+  --card: #f0f0f2;
   --fg: #18181b;
   --muted: #71717a;
   --faint: #a1a1aa;
-  --line: #e4e4e7;
+  --line: #e2e2e6;
   --accent: #c2410c;
   --accent-soft: #fff7ed;
-  --chip: #f4f4f5;
+  --chip: #e8e8eb;
+  /* --bg is the same white as the page itself, so a surface using it
+     (the board's own individual cards) needs a shadow to read as raised
+     rather than just blending in — dark mode doesn't need this since its
+     bg/card shades already contrast enough on their own. */
+  --card-shadow: 0 1px 3px rgba(24, 24, 27, .08), 0 1px 2px rgba(24, 24, 27, .05);
 }
 /* System dark applies unless a page has explicitly overridden it to
    light via data-theme (see the board's theme toggle) — :not() here is
@@ -16,6 +21,7 @@
   :root:not([data-theme="light"]) {
     --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
     --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
+    --card-shadow: none;
   }
 }
 /* The reverse override: forcing dark even when the OS itself is set to
@@ -24,6 +30,7 @@
 :root[data-theme="dark"] {
   --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
   --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
+  --card-shadow: none;
 }
 * { box-sizing: border-box; }
 body {
