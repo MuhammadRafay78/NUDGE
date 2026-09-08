@@ -815,7 +815,13 @@ modalEl.addEventListener('click', async (e) => {
   if (e.target.classList.contains('ask-card')) {
     const title = e.target.dataset.title || '';
     closeModal();
-    openChat(title ? 'About "' + title + '": ' : '');
+    /* Prefill a complete, answerable question rather than the old dangling
+       "About \"X\": " fragment the user had to finish themselves — naming
+       the card and asking for the status/blocker/next-step shape the chat
+       is already tuned to give. Still editable before sending. */
+    openChat(title
+      ? 'Give me the full picture on "' + title + '": where it stands now, who we\'re waiting on, what\'s blocking it, and what the next step should be.'
+      : '');
     return;
   }
 
