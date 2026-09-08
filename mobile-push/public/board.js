@@ -118,6 +118,14 @@ const cardSearch = document.getElementById('cardSearch');
 const sortModeEl = document.getElementById('sortMode');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
+const chatBtn = document.getElementById('chatBtn');
+const chatModal = document.getElementById('chatModal');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+const chatClear = document.getElementById('chatClear');
+const chatClose = document.getElementById('chatClose');
+const chatStatus = document.getElementById('chatStatus');
 
 let activeBoard = localStorage.getItem('nudgeActiveBoard') || 'main';
 if (!BOARDS.some((b) => b.id === activeBoard)) activeBoard = 'main';
@@ -425,6 +433,72 @@ modalEl.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalCardId) closeModal();
+});
+
+/* ---------- ask the board a question ----------
+   A chat grounded only in this code's own board cards — not a general
+   assistant, and it never touches Trello. This page has no Gemini key of
+   its own, so the question and history go to the server's /api/ask
+   instead, which builds the same context server-side from this code's
+   stored cards and holds the key. Same idea as the extension's "Ask the
+   board" (common.js, askGeminiAboutBoard/buildBoardChatContext). History
+   survives closing/reopening the modal, cleared only by Clear. ---------- */
+
+let chatHistory = [];   // [{role:'user'|'model', content}]
+
+function renderChatMessages() {
+  chatMessages.innerHTML = chatHistory.length
+    ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
+        formatBodyHtml(m.content) + '</div>').join('')
+    : '<div class="empty">Ask something about the cards on this board — due dates, who’s waiting on what, what’s overdue…</div>';
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+chatBtn.addEventListener('click', () => {
+  chatModal.hidden = false;
+  renderChatMessages();
+  chatInput.focus();
+});
+chatClose.addEventListener('click', () => { chatModal.hidden = true; });
+chatModal.addEventListener('click', (e) => {
+  if (e.target === chatModal) chatModal.hidden = true;
+});
+chatClear.addEventListener('click', () => {
+  chatHistory = [];
+  chatStatus.textContent = '';
+  renderChatMessages();
+});
+
+async function sendChat() {
+  const q = chatInput.value.trim();
+  if (!q) return;
+  const priorHistory = chatHistory.slice();
+  chatHistory.push({ role: 'user', content: q });
+  chatInput.value = '';
+  renderChatMessages();
+  chatSend.disabled = true;
+  chatStatus.textContent = 'Thinking…';
+  try {
+    const data = await api('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code, question: q, history: priorHistory })
+    });
+    chatHistory.push({ role: 'model', content: data.answer || '(no answer)' });
+    chatStatus.textContent = '';
+  } catch (e) {
+    chatHistory.pop();   // don't leave an unanswered question sitting in history
+    chatStatus.textContent = (e && e.message) || String(e);
+  }
+  chatSend.disabled = false;
+  renderChatMessages();
+}
+chatSend.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
 });
 
 /* Every word typed must show up somewhere on the card, same as the

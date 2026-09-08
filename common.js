@@ -3767,6 +3767,114 @@ var QA = (function () {
     };
   }
 
+  /* ---------- ask the board a question ----------
+     A chat, grounded only in the cards actually on the board right now — not
+     a general assistant. Reuses the same Gemini key as "Sort mentions"
+     (Settings → Sort mentions) rather than asking for yet another one; the
+     mobile-push server's /api/ask mirrors this same context shape and
+     system prompt for the shareable board, which has no Gemini key of its
+     own to hold. */
+  const BOARD_CHAT_SYSTEM = [
+    'You help a tax professional (Rafay, Trello handle @rafay10) work through his Nudge Kanban board.',
+    'You are given a CONTEXT block: every card currently on the board he is looking at — its board (Main/QTM/Tax Plan Draft/Action Items), column, due date, its own note, and its comment thread where one has been synced.',
+    'Rules:',
+    '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
+    '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
+    '3. Be brief and concrete — name the card/client, and quote a relevant fragment rather than paraphrasing away specifics.',
+    '4. When asked what needs attention, prefer overdue and soon-due cards first.',
+    '5. Plain prose or short bullets. No preamble, no restating the question, no markdown headers.'
+  ].join('\n');
+
+  function labelFor(list, id) {
+    const found = (list || []).filter(function (x) { return x.id === id; })[0];
+    return found ? found.label : id;
+  }
+
+  /* Every card currently loaded, flattened into one text block the model can
+     ground answers in — same idea as buildContext above, just built from
+     board cards instead of the Trello notifications page. Caps at
+     MAX_CONTEXT the same way, oldest/least-relevant detail dropped first by
+     simply stopping once the budget's spent rather than trying to be clever
+     about which cards matter most. */
+  function buildBoardChatContext(cards) {
+    const list = cards || [];
+    const out = ['TODAY: ' + new Date().toString(), '', 'BOARD CARDS (' + list.length + ' total):'];
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      const boardId = (c.board && BOARDS.some(function (b) { return b.id === c.board; })) ? c.board : 'main';
+      const cols = columnsForBoard(boardId);
+      const colId = (c.column && cols.some(function (x) { return x.id === c.column; })) ? c.column : 'doing';
+      const name = c.context || c.title || 'Untitled';
+      out.push('- [' + labelFor(BOARDS, boardId) + ' / ' + labelFor(cols, colId) + ']' +
+        (c.due ? ' DUE: ' + c.due : '') + ' ' + name);
+      const note = tidyCommentText(c.body || '').trim();
+      if (note) out.push('  NOTE: ' + note.slice(0, 300));
+      if (Array.isArray(c.comments) && c.comments.length) {
+        c.comments.slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); }).slice(0, 5)
+          .forEach(function (cm) {
+            const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
+            if (text) out.push('  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300));
+          });
+      }
+      if (out.join('\n').length > MAX_CONTEXT) { out.push('- …(truncated)'); break; }
+    }
+    let ctx = out.join('\n');
+    if (ctx.length > MAX_CONTEXT) ctx = ctx.slice(0, MAX_CONTEXT) + '\n…(truncated)';
+    return ctx;
+  }
+
+  /* history: [{role:'user'|'model', content}]. Gemini calls the assistant
+     turn "model", not "assistant" — kept as-is here rather than normalized,
+     since the mobile-push server's /api/ask builds the same shape and both
+     sides need to agree on it. */
+  async function askGeminiAboutBoard(question, context, history) {
+    const cfg = await getTriage();
+    if (!cfg.apiKey) {
+      const e = new Error('No Gemini key yet. Open Settings → Sort mentions and paste your Gemini key.');
+      e.needsKey = true;
+      throw e;
+    }
+    const contents = [];
+    (history || []).slice(-6).forEach(function (h) {
+      contents.push({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.content }] });
+    });
+    contents.push({
+      role: 'user',
+      parts: [{ text: 'CONTEXT (the only data you may use):\n' + context + '\n\nQUESTION: ' + question }]
+    });
+
+    let res;
+    try {
+      res = await fetchGeminiRetry(
+        'https://generativelanguage.googleapis.com/v1beta/models/' +
+        encodeURIComponent(cfg.model || 'gemini-flash-latest') + ':generateContent',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: BOARD_CHAT_SYSTEM }] },
+            contents: contents,
+            generationConfig: { temperature: 0.2, maxOutputTokens: 800 }
+          })
+        }
+      );
+    } catch (e) {
+      throw new Error('Could not reach Gemini (offline?): ' + ((e && e.message) || e));
+    }
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const b = await res.json();
+        detail = (b && b.error && b.error.message) || '';
+      } catch (e) { /* status is enough */ }
+      throw new Error(triageError(res.status, detail));
+    }
+    const body = await res.json();
+    const parts = (((body.candidates || [])[0] || {}).content || {}).parts || [];
+    const text = parts.map(function (p) { return p.text || ''; }).join('').trim();
+    return text || '(no answer)';
+  }
+
   /* ---------- daily board update ----------
      One short message, drafted from what's actually on the board right now —
      mainly which client cards (QTM codes) are in Doing / Action Items today —
@@ -4939,6 +5047,7 @@ var QA = (function () {
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
+    BOARD_CHAT_SYSTEM, buildBoardChatContext, askGeminiAboutBoard,
     getPush, setPush, pushToPhone,
     BOARD_COLUMNS, ACTION_ITEMS_COLUMNS, columnsForBoard, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow, ME,

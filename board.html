@@ -193,6 +193,18 @@
       resize: vertical; min-height: 90px; }
     .meta.ok { color: #16a34a; font-weight: 600; }
     .meta.bad { color: var(--accent); }
+    /* Same chat-bubble language as the "Open card" comment thread — a
+       question/answer pair reads the same way a tagged comment does. */
+    .chat-messages { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 10px; margin-bottom: 10px; padding-right: 2px; }
+    .chat-msg { background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 12px; font-size: 13.5px; line-height: 1.5; max-width: 88%; overflow-wrap: anywhere; }
+    .chat-msg.user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent); }
+    .chat-msg.ai { align-self: flex-start; }
+    .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+    .chat-input-row textarea { flex: 1; font: inherit; font-size: 13.5px; padding: 8px 10px;
+      border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+      resize: vertical; min-height: 40px; }
   </style>
 </head>
 <body>
@@ -218,7 +230,23 @@
     <button class="btn go" id="dailyUpdateBtn" title="Use AI to draft a short status update from what's on the board today">Today's update</button>
     <button class="btn" id="backfillBtn" title="Fill in client name + due date for older cards, make any card's due date start updating live instead of staying frozen, and sync a comment thread for any card that doesn't have one yet — needs an open Trello tab">Backfill details</button>
     <button class="btn" id="recatBtn" title="Move any card whose headline carries a QTM/UTM code back onto QTM, then move anything else whose text reads as an action-/pending-items list onto the Action Items board">Recategorize</button>
+    <button class="btn" id="chatBtn" title="Ask a question about the cards on this board — uses the same Gemini key as Sort mentions">💬 Ask the board</button>
     <span class="meta" id="status"></span>
+  </div>
+
+  <div class="update-panel" id="chatPanel" hidden>
+    <div class="update-head">
+      <b>Ask the board</b>
+      <span class="meta" id="chatStatus"></span>
+      <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="chatClear">Clear</button>
+      <button class="modal-close" id="chatClose" title="Dismiss" style="position:static">&times;</button>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-row">
+      <textarea id="chatInput" rows="2" placeholder="Ask something about the cards on this board — due dates, who's waiting on what, what's overdue… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button class="btn go" id="chatSend">Ask</button>
+    </div>
   </div>
 
   <div class="update-panel" id="updatePanel" hidden>

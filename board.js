@@ -8,6 +8,14 @@ const cardSearch = document.getElementById('cardSearch');
 const cardSearchClear = document.getElementById('cardSearchClear');
 const backfillBtn = document.getElementById('backfillBtn');
 const recatBtn = document.getElementById('recatBtn');
+const chatBtn = document.getElementById('chatBtn');
+const chatPanel = document.getElementById('chatPanel');
+const chatMessages = document.getElementById('chatMessages');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+const chatClear = document.getElementById('chatClear');
+const chatClose = document.getElementById('chatClose');
+const chatStatus = document.getElementById('chatStatus');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
@@ -1176,6 +1184,69 @@ recatBtn.addEventListener('click', async () => {
       (actionFixed ? (qtmFixed ? ',' : ' —') + ' ' + actionFixed + ' moved to Action Items' : '') +
       (failed ? ' (' + failed + ' could not be fully checked — needs an open Trello tab)' : '') + '.'
     : 'Nothing to fix — every card is already sorted.';
+});
+
+/* ---------- ask the board a question ----------
+   A chat grounded only in whatever's currently loaded on this board tab —
+   not a general assistant, and it never touches Trello. Reuses the same
+   Gemini key as "Sort mentions" (Settings), same reason the daily update
+   below does. History survives closing/reopening the panel, cleared only
+   by the explicit Clear button. ---------- */
+
+let chatHistory = [];   // [{role:'user'|'model', content}]
+
+function renderChat() {
+  chatMessages.innerHTML = chatHistory.length
+    ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
+        formatCommentHtml(m.content) + '</div>').join('')
+    : '<div class="meta">Ask something about the cards on this board — due dates, who’s waiting on what, what’s overdue…</div>';
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+chatBtn.addEventListener('click', () => {
+  chatPanel.hidden = !chatPanel.hidden;
+  if (!chatPanel.hidden) {
+    renderChat();
+    chatInput.focus();
+  }
+});
+chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
+chatClear.addEventListener('click', () => {
+  chatHistory = [];
+  chatStatus.textContent = '';
+  chatStatus.className = 'meta';
+  renderChat();
+});
+
+async function sendChat() {
+  const q = chatInput.value.trim();
+  if (!q) return;
+  const priorHistory = chatHistory.slice();
+  chatHistory.push({ role: 'user', content: q });
+  chatInput.value = '';
+  renderChat();
+  chatSend.disabled = true;
+  chatStatus.textContent = 'Thinking…';
+  chatStatus.className = 'meta';
+  try {
+    const context = QA.buildBoardChatContext(Object.values(cardsById));
+    const answer = await QA.askGeminiAboutBoard(q, context, priorHistory);
+    chatHistory.push({ role: 'model', content: answer });
+    chatStatus.textContent = '';
+  } catch (e) {
+    chatHistory.pop();   // don't leave an unanswered question sitting in history
+    chatStatus.textContent = (e && e.message) || String(e);
+    chatStatus.className = 'meta bad';
+  }
+  chatSend.disabled = false;
+  renderChat();
+}
+chatSend.addEventListener('click', sendChat);
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChat();
+  }
 });
 
 /* ---------- daily update: one AI-drafted message of which cards are
