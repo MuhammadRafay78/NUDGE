@@ -242,15 +242,32 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
+    /* A real chat window: a fixed height (not content-sized) so the message
+       list fills it and scrolls, sized by --chat-w/--chat-h which the
+       top-left grip below (and a saved size from last time) can override.
+       max-* mirror the JS clamp so a dragged size can't run off-screen. */
     #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 40;
-      width: 620px; max-width: calc(100vw - 32px); max-height: 82vh;
+      width: var(--chat-w, 620px); height: var(--chat-h, 560px);
+      max-width: calc(100vw - 48px); max-height: calc(100vh - 112px);
       padding: 18px 20px; display: flex; flex-direction: column;
       box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
     #chatPanel.floating .update-head b { font-size: 16px; }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
+    /* The panel is pinned bottom-right, so its native (bottom-right) resize
+       corner would be buried off toward the page edge. This grip lives at
+       the top-left corner instead and grows the window up and to the left. */
+    .chat-resize { position: absolute; top: 0; left: 0; width: 20px; height: 20px;
+      cursor: nwse-resize; z-index: 2; touch-action: none; }
+    .chat-resize::before { content: ''; position: absolute; top: 7px; left: 7px;
+      width: 7px; height: 7px; border-top: 2px solid var(--muted); border-left: 2px solid var(--muted); }
+    .chat-resize:hover::before { border-color: var(--accent); }
+    #chatPanel:not(.floating) .chat-resize { display: none; }
     @media (max-width: 520px) {
       .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
-      #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; max-width: none; max-height: 76vh; }
+      #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; height: auto; max-width: none; max-height: 76vh; }
+      /* No room to drag a floating window on a phone — it's already edge to
+         edge — so the grip only gets in the way here. */
+      .chat-resize { display: none; }
     }
   </style>
 </head>
@@ -281,6 +298,7 @@
   </div>
 
   <div class="update-panel floating" id="chatPanel" hidden>
+    <div class="chat-resize" id="chatResize" title="Drag to resize"></div>
     <div class="update-head">
       <b>Ask the board</b>
       <span class="meta" id="chatStatus"></span>

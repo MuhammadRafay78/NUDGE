@@ -16,6 +16,7 @@ const chatSend = document.getElementById('chatSend');
 const chatClear = document.getElementById('chatClear');
 const chatClose = document.getElementById('chatClose');
 const chatStatus = document.getElementById('chatStatus');
+const chatResize = document.getElementById('chatResize');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
@@ -1159,6 +1160,46 @@ chatBtn.addEventListener('click', () => {
   openChat();
 });
 chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
+
+/* ---------- resizable chat window ----------
+   The window is pinned to its bottom-right corner, so dragging the
+   top-left grip grows it up and to the left: new size = distance from the
+   fixed right/bottom edges back to the pointer. Clamped to a sane floor
+   and to the viewport (matching the CSS max-*), and the size is remembered
+   across reloads. */
+const CHAT_SIZE_KEY = 'nudge.chatSize';
+const CHAT_MIN_W = 360, CHAT_MIN_H = 320;
+const chatMaxW = () => window.innerWidth - 48;   // matches max-width: calc(100vw - 48px)
+const chatMaxH = () => window.innerHeight - 112;  // matches max-height: calc(100vh - 112px)
+
+function applyChatSize(w, h) {
+  const cw = Math.round(Math.max(CHAT_MIN_W, Math.min(w, chatMaxW())));
+  const ch = Math.round(Math.max(CHAT_MIN_H, Math.min(h, chatMaxH())));
+  chatPanel.style.setProperty('--chat-w', cw + 'px');
+  chatPanel.style.setProperty('--chat-h', ch + 'px');
+  return { w: cw, h: ch };
+}
+
+try {
+  const saved = JSON.parse(localStorage.getItem(CHAT_SIZE_KEY) || 'null');
+  if (saved && saved.w && saved.h) applyChatSize(saved.w, saved.h);
+} catch (e) { /* private mode / blocked storage — just use the default size */ }
+
+chatResize.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const rect = chatPanel.getBoundingClientRect();
+  const rightEdge = rect.right, bottomEdge = rect.bottom;
+  let last = { w: rect.width, h: rect.height };
+  chatResize.setPointerCapture(e.pointerId);
+  const onMove = (ev) => { last = applyChatSize(rightEdge - ev.clientX, bottomEdge - ev.clientY); };
+  const onUp = () => {
+    chatResize.removeEventListener('pointermove', onMove);
+    chatResize.removeEventListener('pointerup', onUp);
+    try { localStorage.setItem(CHAT_SIZE_KEY, JSON.stringify(last)); } catch (e) { /* storage blocked */ }
+  };
+  chatResize.addEventListener('pointermove', onMove);
+  chatResize.addEventListener('pointerup', onUp);
+});
 chatClear.addEventListener('click', () => {
   chatHistory = [];
   chatStatus.textContent = '';

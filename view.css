@@ -14,6 +14,11 @@
   --accent-soft: #fff7ed;
   --chip: #e8e8eb;
   --ok: #16a34a;
+  /* Status-badge text tones. The badges sit on a faint color-mix tint of
+     the same hue, so the text has to be a darker, saturated shade to read
+     on white; dark mode (below) keeps the light pastels that pop on its
+     dark ground. */
+  --tone-red: #dc2626; --tone-amber: #b45309; --tone-blue: #0369a1; --tone-green: #16a34a;
   /* --bg is the same white as the page itself, so a surface using it
      (the board's own individual cards) needs a shadow to read as raised
      rather than just blending in — dark mode doesn't need this since its
@@ -31,6 +36,7 @@
     /* #16a34a is legible on white but muddy and low-contrast on the dark
        ground — a brighter green reads as "success" without straining. */
     --ok: #4ade80;
+    --tone-red: #f87171; --tone-amber: #fbbf24; --tone-blue: #4aa3d8; --tone-green: #6ee7b7;
     --card-shadow: none;
   }
 }
@@ -42,6 +48,7 @@
   --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
   --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
   --ok: #4ade80;
+  --tone-red: #f87171; --tone-amber: #fbbf24; --tone-blue: #4aa3d8; --tone-green: #6ee7b7;
   --card-shadow: none;
 }
 * { box-sizing: border-box; }
@@ -305,8 +312,8 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   padding: 2px 5px; border-radius: 3px; text-transform: uppercase;
   background: var(--line); color: var(--muted); flex: 0 0 auto;
 }
-.src.trello { background: color-mix(in srgb, #0079bf 22%, transparent); color: #4aa3d8; }
-.src.canopy { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #f59e0b; }
+.src.trello { background: color-mix(in srgb, #0079bf 22%, transparent); color: var(--tone-blue); }
+.src.canopy { background: color-mix(in srgb, #f59e0b 22%, transparent); color: var(--tone-amber); }
 
 /* ---- a list that starts folded ---- */
 .fold { border: none; background: none; padding: 0; cursor: pointer; font: inherit;
@@ -322,8 +329,8 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
   padding: 2px 6px; border-radius: 3px; flex: 0 0 auto;
 }
-.bucket.needs { background: color-mix(in srgb, #ef4444 20%, transparent); color: #f87171; }
-.bucket.waiting { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.bucket.needs { background: color-mix(in srgb, #ef4444 20%, transparent); color: var(--tone-red); }
+.bucket.waiting { background: color-mix(in srgb, #f59e0b 20%, transparent); color: var(--tone-amber); }
 .bucket.fyi { background: var(--line); color: var(--muted); }
 .bucket-why { font-size: 11px; color: var(--muted); margin-top: 6px; font-style: italic; }
 .bucket-head {
@@ -337,11 +344,11 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   padding: 2px 6px; border-radius: 3px; margin-left: 6px; flex: 0 0 auto;
   white-space: nowrap;
 }
-.due.overdue { background: color-mix(in srgb, #ef4444 24%, transparent); color: #fca5a5; }
-.due.today   { background: color-mix(in srgb, #ef4444 18%, transparent); color: #f87171; }
-.due.soon    { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.due.overdue { background: color-mix(in srgb, #ef4444 24%, transparent); color: var(--tone-red); }
+.due.today   { background: color-mix(in srgb, #ef4444 18%, transparent); color: var(--tone-red); }
+.due.soon    { background: color-mix(in srgb, #f59e0b 20%, transparent); color: var(--tone-amber); }
 .due.later   { background: var(--line); color: var(--muted); }
-.due.done    { background: color-mix(in srgb, #059669 18%, transparent); color: #6ee7b7; }
+.due.done    { background: color-mix(in srgb, #059669 18%, transparent); color: var(--tone-green); }
 .place { flex-wrap: wrap; }
 
 /* ---- the document ledger ---- */
