@@ -3790,10 +3790,22 @@ var QA = (function () {
     return found ? found.label : id;
   }
 
+  /* MAX_CONTEXT (14000 chars) is sized for the ask-a-question feature above,
+     which only ever looks at one search result's worth of Trello
+     notifications at a time — nowhere near enough for a whole board. A
+     board with a couple dozen cards, several carrying a full synced
+     comment thread, blows past 14000 characters well before the loop below
+     reaches an older card, silently dropping it from what the model ever
+     sees — it then correctly (and confusingly) reports that card as
+     "not mentioned" even though it's sitting right there on the board.
+     Gemini's actual context window is nowhere close to this limit, so this
+     is just generous headroom, not a real budget. */
+  const MAX_BOARD_CHAT_CONTEXT = 150000;
+
   /* Every card currently loaded, flattened into one text block the model can
      ground answers in — same idea as buildContext above, just built from
      board cards instead of the Trello notifications page. Caps at
-     MAX_CONTEXT the same way, oldest/least-relevant detail dropped first by
+     MAX_BOARD_CHAT_CONTEXT, oldest/least-relevant detail dropped first by
      simply stopping once the budget's spent rather than trying to be clever
      about which cards matter most. */
   function buildBoardChatContext(cards) {
@@ -3816,10 +3828,10 @@ var QA = (function () {
             if (text) out.push('  COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text.slice(0, 300));
           });
       }
-      if (out.join('\n').length > MAX_CONTEXT) { out.push('- …(truncated)'); break; }
+      if (out.join('\n').length > MAX_BOARD_CHAT_CONTEXT) { out.push('- …(truncated)'); break; }
     }
     let ctx = out.join('\n');
-    if (ctx.length > MAX_CONTEXT) ctx = ctx.slice(0, MAX_CONTEXT) + '\n…(truncated)';
+    if (ctx.length > MAX_BOARD_CHAT_CONTEXT) ctx = ctx.slice(0, MAX_BOARD_CHAT_CONTEXT) + '\n…(truncated)';
     return ctx;
   }
 
