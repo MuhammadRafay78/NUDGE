@@ -135,6 +135,33 @@ const chatSend = document.getElementById('chatSend');
 const chatClear = document.getElementById('chatClear');
 const chatClose = document.getElementById('chatClose');
 const chatStatus = document.getElementById('chatStatus');
+const themeBtn = document.getElementById('themeBtn');
+
+/* "system" (the default) just follows the OS's own light/dark setting via
+   the prefers-color-scheme block above — cycling stamps data-theme on
+   <html> (which that CSS keys off of) and persists it, same mechanism as
+   the extension's board. The inline script in board.html's <head> re-reads
+   this on every load so an override sticks without a flash of the wrong
+   theme first. */
+const THEME_ICON = { system: '🌓', light: '☀️', dark: '🌙' };
+const THEME_LABEL = { system: 'Matching system', light: 'Light', dark: 'Dark' };
+const THEME_CYCLE = ['system', 'light', 'dark'];
+
+function applyTheme(theme) {
+  if (theme === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  themeBtn.textContent = THEME_ICON[theme];
+  themeBtn.title = 'Color theme: ' + THEME_LABEL[theme] + ' — click to change';
+}
+
+applyTheme(THEME_CYCLE.includes(localStorage.getItem('nudgeTheme')) ? localStorage.getItem('nudgeTheme') : 'system');
+
+themeBtn.addEventListener('click', () => {
+  const cur = THEME_CYCLE.includes(localStorage.getItem('nudgeTheme')) ? localStorage.getItem('nudgeTheme') : 'system';
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(cur) + 1) % THEME_CYCLE.length];
+  localStorage.setItem('nudgeTheme', next);
+  applyTheme(next);
+});
 
 /* Not validated here against allBoards() — customBoards is still empty
    this early (nothing's been fetched yet), so a stored custom board id
@@ -175,6 +202,18 @@ function ago(ms) {
 
 function esc(s) {
   return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* The tile's clamped preview line, unlike the full "Open card" modal below,
+   is plain text with no room for formatBodyHtml's block-per-line markup —
+   but the raw body still carries Trello's own "**bold**"/"_italic_"
+   markers, which showed up as literal asterisks and underscores in the
+   preview instead of being dropped like the modal already does. */
+function plainPreview(text) {
+  let t = esc(text);
+  t = t.replace(/(?<!\w)_|_(?!\w)/g, '');
+  t = t.replace(/\*\*([^*]+)\*\*/g, '$1');
+  return t;
 }
 
 async function api(path, options) {
@@ -244,7 +283,7 @@ function itemHtml(card) {
       '<div class="t">' + esc(heading) + '</div>' +
       (byline ? '<div class="sub">' + esc(byline) + '</div>' : '') +
       (due ? '<div class="due">' + esc(due) + '</div>' : '') +
-      (body ? '<div class="b">' + esc(body) + '</div>' : '') +
+      (body ? '<div class="b">' + plainPreview(body) + '</div>' : '') +
       /* Two selects plus the timestamp/Trello-link/delete button couldn't
          fit on one row on a phone-width tile without crushing "when" down
          to a sliver of wrapped characters — give the selects their own
