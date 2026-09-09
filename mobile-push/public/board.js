@@ -412,9 +412,18 @@ function modalHtml(card) {
 
   let body;
   if (!card.cardId) {
-    /* A hand-typed or Slack-origin card has no Trello card behind it at
-       all — nothing to fetch, so this is the only content there ever is. */
-    body = formatBodyHtml(card.body);
+    /* No Trello card behind this one at all — nothing to fetch. openModal
+       already populated historyCache from card.comments when there were
+       any (a Google Sheet script's card, most often, appending a growing
+       thread over time) — reading that here instead of always falling
+       back to card.body is what shows the whole thread instead of freezing
+       on just the first message ever filed. A hand-typed or Slack-origin
+       card genuinely has nothing beyond its body, so that stays the
+       fallback. */
+    const cache = historyCache[card.id];
+    body = (cache && cache.ok && cache.comments && cache.comments.length)
+      ? cache.comments.map(modalCommentHtml).join('')
+      : formatBodyHtml(card.body);
   } else {
     const cache = historyCache[card.id];
     if (!cache || cache.loading) {

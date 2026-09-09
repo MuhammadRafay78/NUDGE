@@ -287,7 +287,15 @@ function itemHtml(card, terms) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer" title="Open on ' + linkSource + '">' + linkSource + ' &#8599;</a>'
     : '';
-  const canReply = !!card.cardId;
+  /* A card filed by something outside Nudge — a Google Sheet script, say —
+     has no Trello cardId, but it can still carry a real comments array
+     (pushed there directly via PATCH), so there's something worth opening
+     even though there's no live Trello thread to fetch or reply into.
+     canOpen covers both; canReplyTrello stays cardId-only since replying
+     genuinely does post to Trello (QA.replyToCard) and there's no card
+     there to post to otherwise. */
+  const canOpen = !!card.cardId || (Array.isArray(card.comments) && card.comments.length > 0);
+  const canReplyTrello = !!card.cardId;
   /* The client/card name is what matters at a glance — lead with it. The
      generic "X tagged you" line is demoted to a byline underneath (or, for a
      hand-typed card with no client name yet, it's all there is, so it stays
@@ -318,10 +326,10 @@ function itemHtml(card, terms) {
          without ever pulling "when"/delete along with them — those two stay
          paired on a fixed, always-two-item row underneath, so delete never
          ends up stranded alone on its own line. */
-      (canReply || trelloLink ? (
+      (canOpen || trelloLink ? (
         '<div class="acts">' +
-          (canReply ? '<button class="hist-btn">Open card</button>' : '') +
-          (canReply ? '<button class="reply-btn">Reply</button>' : '') +
+          (canOpen ? '<button class="hist-btn">Open card</button>' : '') +
+          (canReplyTrello ? '<button class="reply-btn">Reply</button>' : '') +
           trelloLink +
         '</div>'
       ) : '') +
@@ -459,7 +467,12 @@ function modalHtml(card) {
       askCard +
     '</div>' +
     '<div class="modal-body">' + body + '</div>' +
-    '<div class="modal-foot">' + composerHtml(card) + '</div>'
+    /* Replying genuinely does post to Trello (QA.replyToCard) — with no
+       cardId there's no card there to post to, so the composer would just
+       fail. Told plainly instead of shown broken. */
+    (card.cardId
+      ? '<div class="modal-foot">' + composerHtml(card) + '</div>'
+      : '<div class="modal-foot"><div class="modal-status">Filed from outside Nudge — no Trello thread to reply to here.</div></div>')
   );
 }
 
@@ -498,7 +511,17 @@ function closeModal() {
    otherwise silently drop focus a few hundred ms after "Reply" was clicked. */
 async function loadHistory(id, focusComposer) {
   const card = cardsById[id];
-  if (!card || !card.cardId) return;
+  if (!card) return;
+  if (!card.cardId) {
+    /* Nothing to fetch — there's no Trello card behind this one (filed by
+       a Google Sheet script, most likely), so whatever's in card.comments
+       already IS the whole thread. Returning early here used to leave
+       openModal's "Loading…" placeholder stuck forever, since nothing
+       downstream of it ever ran for a card like this. */
+    historyCache[id] = { ok: true, comments: (card.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
+    if (modalCardId === id) renderModal(focusComposer);
+    return;
+  }
   const res = await QA.cardWholeFor(card.cardId, true);   // opening a card is a deliberate click
   if (res && res.ok) {
     historyCache[id] = { ok: true, comments: (res.comments || []).slice().sort((a, b) => (b.at || 0) - (a.at || 0)) };
@@ -762,18 +785,18 @@ boardEl.addEventListener('click', async (e) => {
 
   /* Clicking the card itself — its title, context, due chip, body text, the
      drag handle, blank padding — opens it, same as the "Open card" button.
-     A card with no cardId (Slack-filed cards have none — there's no Trello
-     comment thread to show) has nothing to open in a modal, but it does
-     have a source link; clicking anywhere on a card like that used to do
-     nothing at all unless you found the small "Trello ↗" text, so send it
-     to the same place that link goes instead of leaving the click dead. */
+     A card with no cardId AND no stored comments (a Slack-filed card,
+     mainly) has nothing to open in a modal, but it does have a source
+     link; clicking anywhere on a card like that used to do nothing at all
+     unless you found the small "Trello ↗" text, so send it to the same
+     place that link goes instead of leaving the click dead. */
   if (e.target.closest('select')) return;   // opening/choosing from the move dropdown, not the card
   if (e.target.closest('a.open')) return;   // already navigates on its own — don't also act on the bubbled click
   const item = e.target.closest('.item');
   const card = item && cardsById[item.dataset.id];
   if (!card) return;
   if (window.getSelection && String(window.getSelection())) return;   // was selecting text, not clicking
-  if (card.cardId) { openModal(item.dataset.id, false); return; }
+  if (card.cardId || (Array.isArray(card.comments) && card.comments.length)) { openModal(item.dataset.id, false); return; }
   if (card.url) window.open(card.url, '_blank', 'noopener');
 });
 
