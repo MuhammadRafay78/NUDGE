@@ -442,7 +442,11 @@ function modalHtml(card) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>'
     : '';
-  const askCard = '<button type="button" class="open ask-card" data-title="' + esc(card.title || heading) + '">&#128172; Ask about this card</button>';
+  /* heading is the actual client/card name (context, or title if there's
+     no context) — card.title alone is often just the generic "X tagged
+     you" notification line, which made the auto-sent question read as
+     "About 'Paul Eleazar tagged you':" instead of naming the real card. */
+  const askCard = '<button type="button" class="open ask-card" data-title="' + esc(heading || card.title) + '">&#128172; Ask about this card</button>';
   const cache = historyCache[card.id];
 
   let body;
@@ -846,9 +850,15 @@ modalEl.addEventListener('click', async (e) => {
   }
 
   if (e.target.classList.contains('ask-card')) {
+    /* Used to just pre-fill the question and wait — an extra "now actually
+       click Ask" step for what's really a one-click action. Sends
+       immediately instead; the question itself is fixed since this button
+       only ever means one thing. (BOARD_CHAT_SYSTEM's rule 10 already
+       covers forecasts being Dwight's, not Rafay's, so that doesn't need
+       repeating here.) */
     const title = e.target.dataset.title || '';
     closeModal();
-    openChat(title ? 'About "' + title + '": ' : '');
+    askAboutCard(title);
     return;
   }
 
@@ -1207,6 +1217,15 @@ function openChat(prefill) {
   chatInput.focus();
   const len = chatInput.value.length;
   chatInput.setSelectionRange(len, len);
+}
+
+/* "Ask about this card" only ever means one thing, so it asks it
+   outright instead of just pre-filling the question and making him click
+   Ask again for what's really a one-click action. */
+function askAboutCard(title) {
+  const question = (title ? 'On "' + title + '" — ' : '') + 'What are the duties assigned to Rafay regarding this card?';
+  openChat(question);
+  sendChat();
 }
 
 chatBtn.addEventListener('click', () => {
