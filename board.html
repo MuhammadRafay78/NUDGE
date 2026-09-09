@@ -222,7 +222,7 @@
     .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
     .chat-input-row textarea { flex: 1; font: inherit; font-size: 14.5px; padding: 11px 14px;
       border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-      resize: vertical; min-height: 50px; }
+      resize: none; min-height: 0; height: 44px; }
     /* Without this the browser's own default focus ring shows instead — a
        plain white/gray rectangle that clashes hard against a dark, orange-
        accented panel. */
@@ -308,7 +308,7 @@
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input-row">
-      <textarea id="chatInput" rows="2" placeholder="Ask something about the cards on this board — due dates, who's waiting on what, what's overdue… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <textarea id="chatInput" rows="1" placeholder=""></textarea>
       <button class="btn go" id="chatSend">Ask</button>
     </div>
   </div>
