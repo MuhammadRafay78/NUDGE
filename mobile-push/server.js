@@ -15,7 +15,7 @@ const MAX_CUSTOM_BOARDS = 40;
    falls back to Doing for any card whose column doesn't exist on its own
    current board, so this list stays a flat, board-agnostic allow-list
    rather than needing to know which board a card is on to validate it. */
-const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
+const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'waitingdwight', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const MAX_COMMENTS = 300;
 
@@ -71,7 +71,7 @@ const TRELLO_TOKEN = process.env.TRELLO_TOKEN || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
 const BOARD_LABELS = { main: 'Main', qtm: 'QTM', taxplan: 'Tax Plan Draft', actionitems: 'Action Items' };
-const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', done: 'Done' };
+const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', waitingdwight: 'Waiting for Dwight', done: 'Done' };
 const ACTION_ITEMS_COLUMN_IDS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const DEFAULT_COLUMN_IDS = ['inbox', 'doing', 'done'];
 /* Sending every synced comment thread in full, for every card, is what

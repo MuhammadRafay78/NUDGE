@@ -3162,10 +3162,25 @@ var QA = (function () {
      one board's own layout, where a per-board column list would silently
      drop a card sitting in a column that list doesn't know about. Action
      Items' set already includes the other three, so it doubles as this. */
-  const ALL_COLUMNS = ACTION_ITEMS_COLUMNS;
+  /* The custom "Client Comms" board (slug id 'clientcomms', per the
+     mobile-push server's slugifyBoardName) tracks things handed off to
+     Dwight, so it earns a "Waiting for Dwight" column of its own between
+     Doing and Done — the one board that state actually matters on. */
+  const CLIENT_COMMS_COLUMNS = [
+    { id: 'inbox', label: 'Inbox' },
+    { id: 'doing', label: 'Doing' },
+    { id: 'waitingdwight', label: 'Waiting for Dwight' },
+    { id: 'done', label: 'Done' }
+  ];
+  /* Action Items' set already covers the shared three; append the Client
+     Comms extra so a card parked in "Waiting for Dwight" is not silently
+     dropped from the daily-update summary that iterates this list. */
+  const ALL_COLUMNS = ACTION_ITEMS_COLUMNS.concat([{ id: 'waitingdwight', label: 'Waiting for Dwight' }]);
 
   function columnsForBoard(boardId) {
-    return boardId === 'actionitems' ? ACTION_ITEMS_COLUMNS : BOARD_COLUMNS;
+    if (boardId === 'actionitems') return ACTION_ITEMS_COLUMNS;
+    if (boardId === 'clientcomms') return CLIENT_COMMS_COLUMNS;
+    return BOARD_COLUMNS;
   }
 
   /* Four boards sharing columns from columnsForBoard above — a card lives
