@@ -1162,7 +1162,11 @@ function openChat(prefill) {
 }
 
 chatBtn.addEventListener('click', () => {
-  if (!chatPanel.hidden) { chatPanel.hidden = true; return; }
+  /* The × in the panel header is the only thing that closes the chat —
+     clicking the launcher again should never dismiss it (too easy to lose
+     a half-typed question that way). If it's already open, just bring the
+     focus back to the input instead of toggling it shut. */
+  if (!chatPanel.hidden) { chatInput.focus(); return; }
   openChat();
 });
 chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
