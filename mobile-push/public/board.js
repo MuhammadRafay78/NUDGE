@@ -274,6 +274,14 @@ async function fetchTrelloCard(cardId) {
   return { comments: data.comments || [] };
 }
 
+/* commentsAt is only set once a card actually has synced comments (Trello
+   sync, a reply, or something outside Nudge — a Google Sheet script, say —
+   appending to the thread); a card with none yet just has when it was
+   filed. */
+function lastActivityAt(card) {
+  return card.commentsAt && card.commentsAt > card.createdAt ? card.commentsAt : card.createdAt;
+}
+
 function itemHtml(card) {
   const openLink = card.url ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Trello &#8599;</a>' : '';
   const options = columnsForBoard(cardBoard(card)).map((c) =>
@@ -304,13 +312,15 @@ function itemHtml(card) {
         '<select class="move">' + options + '</select>' +
       '</div>' +
       '<div class="meta">' +
-        /* When this was actually tagged/filed — not when it was last
-           touched. The server bumps updatedAt on any PATCH at all,
-           including a plain column/board move, so this badge picking up
-           that field instead made a 17-day-overdue card read as "1m ago"
-           the moment it got dragged or bulk-recategorized — nothing
-           actually happened to the card itself. */
-        '<span class="when">' + ago(card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed, or — once there's real new
+           activity on the thread — when the latest message landed.
+           updatedAt is still avoided: the server bumps that on any PATCH
+           at all, including a plain column/board move, which is what made
+           a 17-day-overdue card read as "1m ago" the moment it got
+           dragged or bulk-recategorized. commentsAt only moves when the
+           comments array itself changes, so a move alone still leaves
+           this alone. */
+        '<span class="when">' + ago(lastActivityAt(card)) + '</span>' +
         openLink +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
@@ -518,10 +528,31 @@ document.addEventListener('keydown', (e) => {
 
 let chatHistory = [];   // [{role:'user'|'model', content}]
 
+/* formatBodyHtml is built for a raw Trello note — one wall of text with
+   no real line breaks, so it has to guess where a bullet or sentence
+   boundary belongs, including treating any " - " as a bullet delimiter.
+   A Gemini answer already arrives with its own real newlines (the model
+   is told to put each point on its own "- "-prefixed line), so re-running
+   it through those same guesses does more harm than good — it mistook a
+   client's own hyphenated name ("Hilary&Nick Madsen - JD") for a bullet
+   break and split it into two lines. This trusts the model's line breaks
+   instead of re-inferring them. */
+function formatChatHtml(text) {
+  if (!text) return '<div class="p">No answer.</div>';
+  const t = esc(text).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(?<!\w)_|_(?!\w)/g, '');
+  const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="p">No answer.</div>';
+  return lines.map((line) =>
+    line.indexOf('- ') === 0
+      ? '<div class="li">' + line.slice(2) + '</div>'
+      : '<div class="p">' + line + '</div>'
+  ).join('');
+}
+
 function renderChatMessages() {
   chatMessages.innerHTML = chatHistory.length
     ? chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
-        formatBodyHtml(m.content) + '</div>').join('')
+        formatChatHtml(m.content) + '</div>').join('')
     : '<div class="empty">Ask something about the cards on this board — due dates, who’s waiting on what, what’s overdue…</div>';
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }

@@ -207,6 +207,15 @@
       padding: 10px 14px; font-size: 14.5px; line-height: 1.6; max-width: 88%; overflow-wrap: anywhere; }
     .chat-msg.user { align-self: flex-end; background: var(--accent-soft); border-color: var(--accent); }
     .chat-msg.ai { align-self: flex-start; }
+    /* Own copy of the modal's bullet/paragraph look, scoped to a chat
+       bubble instead of .modal-item — a chat answer was rendered with the
+       same hist-li/hist-p markup as a comment, but those are only ever
+       styled under .modal-item, so an AI answer's bullets showed up as
+       plain unmarked lines with no dot, no spacing. */
+    .chat-msg .li { position: relative; margin: 4px 0; padding-left: 15px; }
+    .chat-msg .li::before { content: '\2022'; position: absolute; left: 2px; color: var(--muted); }
+    .chat-msg .p { margin: 6px 0; }
+    .chat-msg > div:first-child { margin-top: 0 !important; }
     /* A pulsing three-dot bubble while waiting on an answer — same shape as
        an AI reply, so it reads as "it's typing" rather than a bare status
        line off to the side. */
@@ -228,45 +237,59 @@
        accented panel. */
     .chat-input-row textarea:focus { outline: none; border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-soft); }
-    .chat-input-row .btn.go { padding: 11px 20px; font-size: 14px; }
+    .chat-input-row .btn.go { padding: 0; width: 46px; height: 46px; flex: 0 0 auto;
+      font-size: 19px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
 
     /* A round, always-in-the-corner trigger instead of a toolbar button —
        stays reachable with one thumb no matter how far the page has
        scrolled, on a phone-width viewport especially. The panel it opens
        floats just above it rather than pushing into the page's normal
        flow, like any chat-widget popup. */
-    .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 40;
+    /* Above .modal-backdrop's z-index:50 — the FAB and panel used to sit
+       below it, so opening chat while a card's "Open card" modal was
+       already up rendered the panel behind that modal's dark overlay:
+       invisible and, since the backdrop intercepts every click across the
+       full viewport, completely unreachable until the card modal was
+       closed by hand. */
+    .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 60;
       width: 60px; height: 60px; border-radius: 50%; border: none;
       background: var(--accent); color: #fff; font-size: 26px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
-    /* A real chat window: a fixed height (not content-sized) so the message
-       list fills it and scrolls, sized by --chat-w/--chat-h which the
-       top-left grip below (and a saved size from last time) can override.
-       max-* mirror the JS clamp so a dragged size can't run off-screen. */
-    #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 40;
-      width: var(--chat-w, 620px); height: var(--chat-h, 560px);
-      max-width: calc(100vw - 48px); max-height: calc(100vh - 112px);
+    /* A comfortably-sized default — Maximize and the top-left resize grip
+       take it larger. Anchored by right/bottom; the height is capped to the
+       space above the 96px bottom offset (keeping 32px clear at the top) so
+       neither the panel nor its resize grip runs off a short viewport. */
+    #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 60;
+      width: 620px; max-width: calc(100vw - 32px);
+      height: min(600px, calc(100vh - 96px - 32px));
       padding: 18px 20px; display: flex; flex-direction: column;
       box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
     #chatPanel.floating .update-head b { font-size: 16px; }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
-    /* The panel is pinned bottom-right, so its native (bottom-right) resize
-       corner would be buried off toward the page edge. This grip lives at
-       the top-left corner instead and grows the window up and to the left. */
-    .chat-resize { position: absolute; top: 0; left: 0; width: 20px; height: 20px;
-      cursor: nwse-resize; z-index: 2; touch-action: none; }
-    .chat-resize::before { content: ''; position: absolute; top: 7px; left: 7px;
-      width: 7px; height: 7px; border-top: 2px solid var(--muted); border-left: 2px solid var(--muted); }
+    /* A divider line under the chat header, and the title itself doubles as
+       a minimize control (alongside the × and the launcher button). */
+    #chatPanel .update-head { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+    #chatHeaderTitle { cursor: pointer; }
+    #chatHeaderTitle:hover { color: var(--accent); }
+    /* Maximize goes a step past the default width for a long back-and-forth;
+       height stays governed by the default rule above. Anchored by
+       right/bottom, so this only changes the size, never the position. */
+    #chatPanel.floating.maximized { width: min(1300px, calc(100vw - 32px)); }
+    /* No native corner to grab — CSS resize only offers the bottom-right
+       corner, and this panel's fixed corner is the opposite one. A small
+       custom handle up here, dragged in board.js, resizes from top-left. */
+    .chat-resize { position: absolute; top: 0; left: 0; width: 18px; height: 18px;
+      cursor: nwse-resize; z-index: 2; }
+    .chat-resize::before { content: ''; position: absolute; top: 5px; left: 5px; width: 8px; height: 8px;
+      border-top: 2px solid var(--muted); border-left: 2px solid var(--muted); border-radius: 2px 0 0 0; }
     .chat-resize:hover::before { border-color: var(--accent); }
-    #chatPanel:not(.floating) .chat-resize { display: none; }
     @media (max-width: 520px) {
       .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
       #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; height: auto; max-width: none; max-height: 76vh; }
-      /* No room to drag a floating window on a phone — it's already edge to
-         edge — so the grip only gets in the way here. */
+      #chatPanel.floating.maximized { width: auto; height: calc(100vh - 74px - 24px); }
       .chat-resize { display: none; }
     }
   </style>
@@ -298,18 +321,19 @@
   </div>
 
   <div class="update-panel floating" id="chatPanel" hidden>
-    <div class="chat-resize" id="chatResize" title="Drag to resize"></div>
+    <span class="chat-resize" id="chatResize" title="Drag to resize"></span>
     <div class="update-head">
-      <b>Ask the board</b>
+      <b id="chatHeaderTitle" title="Click to minimize">Ask the board</b>
       <span class="meta" id="chatStatus"></span>
       <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="chatMaximize" title="Maximize">&#10530;</button>
       <button class="btn" id="chatClear">Clear</button>
       <button class="modal-close" id="chatClose" title="Dismiss" style="position:static">&times;</button>
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input-row">
       <textarea id="chatInput" rows="1" placeholder=""></textarea>
-      <button class="btn go" id="chatSend">Ask</button>
+      <button class="btn go" id="chatSend" title="Ask" aria-label="Ask">&#10148;</button>
     </div>
   </div>
 

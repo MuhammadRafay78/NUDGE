@@ -16,7 +16,8 @@ const chatSend = document.getElementById('chatSend');
 const chatClear = document.getElementById('chatClear');
 const chatClose = document.getElementById('chatClose');
 const chatStatus = document.getElementById('chatStatus');
-const chatResize = document.getElementById('chatResize');
+const chatMaximizeBtn = document.getElementById('chatMaximize');
+const chatResizeHandle = document.getElementById('chatResize');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
@@ -267,6 +268,14 @@ function formatCommentHtml(text) {
   }).join('');
 }
 
+/* commentsAt is only set once a card actually has synced comments (Trello
+   sync, a reply, or something outside Nudge — a Google Sheet script, say —
+   appending to the thread); a card with none yet just has when it was
+   filed. */
+function lastActivityAt(card) {
+  return card.commentsAt && card.commentsAt > card.createdAt ? card.commentsAt : card.createdAt;
+}
+
 function itemHtml(card, terms) {
   /* A separate, clearly-labelled escape hatch to the source page — kept
      small and secondary, since "Open card" opens the comment thread right
@@ -324,14 +333,15 @@ function itemHtml(card, terms) {
         '<select class="move" title="Move to…">' + moveOptions + '</select>' +
       '</div>' +
       '<div class="row2">' +
-        /* When this was actually tagged/filed — not when it was last
-           touched. The server bumps updatedAt on any PATCH at all,
-           including a plain column/board move (a drag, or Recategorize
-           fixing dozens of cards in one pass), so that field reading as
-           "1m ago" on a card that's actually 17 days overdue was just
-           this badge picking up the wrong timestamp, not anything real
-           happening to the card. */
-        '<span class="when">' + QA.ago(card.createdAt) + '</span>' +
+        /* When this was actually tagged/filed, or — once there's real new
+           activity on the thread — when the latest message landed.
+           updatedAt is still avoided: the server bumps that on any PATCH
+           at all, including a plain column/board move (a drag, or
+           Recategorize fixing dozens of cards in one pass), which is what
+           made this badge read "1m ago" on a card that was actually 17
+           days overdue. commentsAt only moves when the comments array
+           itself changes, so a move alone still leaves this alone. */
+        '<span class="when">' + QA.ago(lastActivityAt(card)) + '</span>' +
         '<button class="del" title="Delete">&times;</button>' +
       '</div>' +
     '</div>'
@@ -1138,12 +1148,33 @@ clearBtn.addEventListener('click', async () => {
 let chatHistory = [];   // [{role:'user'|'model', content}]
 let chatThinking = false;   // shows a typing-dots bubble while a question is in flight
 
+/* formatCommentHtml is built for a raw Trello note — one wall of text
+   with no real line breaks, so it has to guess where a bullet or sentence
+   boundary belongs, including treating any " - " as a bullet delimiter.
+   A Gemini answer already arrives with its own real newlines (the model
+   is told to put each point on its own "- "-prefixed line), so re-running
+   it through those same guesses does more harm than good — it mistook a
+   client's own hyphenated name ("Hilary&Nick Madsen - JD") for a bullet
+   break and split it into two lines. This trusts the model's line breaks
+   instead of re-inferring them. */
+function formatChatHtml(text) {
+  if (!text) return '<div class="p">No answer.</div>';
+  const t = esc(text).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(?<!\w)_|_(?!\w)/g, '');
+  const lines = t.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="p">No answer.</div>';
+  return lines.map((line) =>
+    line.indexOf('- ') === 0
+      ? '<div class="li">' + line.slice(2) + '</div>'
+      : '<div class="p">' + line + '</div>'
+  ).join('');
+}
+
 function renderChat() {
   /* No separate placeholder paragraph here — the textarea's own
      placeholder already says this, and repeating it as a second wall of
      text right above an empty message list was just visual clutter. */
   const bubbles = chatHistory.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : 'ai') + '">' +
-    formatCommentHtml(m.content) + '</div>').join('');
+    formatChatHtml(m.content) + '</div>').join('');
   /* Same shape as an AI reply, so it reads as "it's answering" rather than
      a separate status line — matches the typing indicator every real chat
      app uses instead of a bare "Thinking…" caption. */
@@ -1162,53 +1193,71 @@ function openChat(prefill) {
 }
 
 chatBtn.addEventListener('click', () => {
-  /* The × in the panel header is the only thing that closes the chat —
-     clicking the launcher again should never dismiss it (too easy to lose
-     a half-typed question that way). If it's already open, just bring the
-     focus back to the input instead of toggling it shut. */
-  if (!chatPanel.hidden) { chatInput.focus(); return; }
+  /* Clicking the launcher toggles the panel — open it, or minimize it back
+     down if it's already showing. */
+  if (!chatPanel.hidden) { chatPanel.hidden = true; return; }
+  /* "Ask about this card" already closes an open card modal before
+     opening chat — the FAB skipped that, so opening chat straight from
+     the FAB while a card was open left two dialogs stacked at once. */
+  closeModal();
   openChat();
 });
 chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
+/* The header title is a second minimize control — clicking "Ask the board"
+   itself hides the panel, same as the ×. */
+const chatHeaderTitle = document.getElementById('chatHeaderTitle');
+chatHeaderTitle.addEventListener('click', () => { chatPanel.hidden = true; });
 
-/* ---------- resizable chat window ----------
-   The window is pinned to its bottom-right corner, so dragging the
-   top-left grip grows it up and to the left: new size = distance from the
-   fixed right/bottom edges back to the pointer. Clamped to a sane floor
-   and to the viewport (matching the CSS max-*), and the size is remembered
-   across reloads. */
-const CHAT_SIZE_KEY = 'nudge.chatSize';
-const CHAT_MIN_W = 360, CHAT_MIN_H = 320;
-const chatMaxW = () => window.innerWidth - 48;   // matches max-width: calc(100vw - 48px)
-const chatMaxH = () => window.innerHeight - 112;  // matches max-height: calc(100vh - 112px)
+/* ---------- chat panel: maximize + drag-resize from the top-left ----------
+   The panel is anchored by right/bottom (see #chatPanel.floating), so
+   growing its width/height already expands it toward the top-left on its
+   own — no repositioning needed, just a bigger box. Maximize is the quick
+   toggle; the handle is for dialing in an exact size by hand. Dragging
+   always wins over a maximized state, and picking Maximize always clears
+   whatever size dragging left behind. */
+let chatMaximized = false;
 
-function applyChatSize(w, h) {
-  const cw = Math.round(Math.max(CHAT_MIN_W, Math.min(w, chatMaxW())));
-  const ch = Math.round(Math.max(CHAT_MIN_H, Math.min(h, chatMaxH())));
-  chatPanel.style.setProperty('--chat-w', cw + 'px');
-  chatPanel.style.setProperty('--chat-h', ch + 'px');
-  return { w: cw, h: ch };
+function setChatMaximized(on) {
+  chatMaximized = on;
+  chatPanel.classList.toggle('maximized', on);
+  chatPanel.style.width = '';
+  chatPanel.style.height = '';
+  chatPanel.style.maxHeight = '';
+  chatMaximizeBtn.textContent = on ? '⤡' : '⤢';
+  chatMaximizeBtn.title = on ? 'Restore' : 'Maximize';
 }
 
-try {
-  const saved = JSON.parse(localStorage.getItem(CHAT_SIZE_KEY) || 'null');
-  if (saved && saved.w && saved.h) applyChatSize(saved.w, saved.h);
-} catch (e) { /* private mode / blocked storage — just use the default size */ }
+chatMaximizeBtn.addEventListener('click', () => setChatMaximized(!chatMaximized));
 
-chatResize.addEventListener('pointerdown', (e) => {
+chatResizeHandle.addEventListener('mousedown', (e) => {
   e.preventDefault();
+  if (chatMaximized) setChatMaximized(false);
+  const startX = e.clientX;
+  const startY = e.clientY;
   const rect = chatPanel.getBoundingClientRect();
-  const rightEdge = rect.right, bottomEdge = rect.bottom;
-  let last = { w: rect.width, h: rect.height };
-  chatResize.setPointerCapture(e.pointerId);
-  const onMove = (ev) => { last = applyChatSize(rightEdge - ev.clientX, bottomEdge - ev.clientY); };
-  const onUp = () => {
-    chatResize.removeEventListener('pointermove', onMove);
-    chatResize.removeEventListener('pointerup', onUp);
-    try { localStorage.setItem(CHAT_SIZE_KEY, JSON.stringify(last)); } catch (e) { /* storage blocked */ }
-  };
-  chatResize.addEventListener('pointermove', onMove);
-  chatResize.addEventListener('pointerup', onUp);
+  const startWidth = rect.width;
+  const startHeight = rect.height;
+  /* Switch from the CSS max-height (content-driven, shrinks to fit) to an
+     explicit height the drag can actually control. */
+  chatPanel.style.width = startWidth + 'px';
+  chatPanel.style.height = startHeight + 'px';
+  chatPanel.style.maxHeight = 'none';
+
+  function onMove(ev) {
+    /* The handle sits at the top-left corner while right/bottom stay
+       fixed — so dragging it left/up (mouse X/Y decreasing) is what
+       should grow the panel, not shrink it. */
+    const nextWidth = startWidth + (startX - ev.clientX);
+    const nextHeight = startHeight + (startY - ev.clientY);
+    chatPanel.style.width = Math.min(Math.max(nextWidth, 360), window.innerWidth - 32) + 'px';
+    chatPanel.style.height = Math.min(Math.max(nextHeight, 280), window.innerHeight - 120) + 'px';
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 });
 chatClear.addEventListener('click', () => {
   chatHistory = [];

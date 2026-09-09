@@ -65,7 +65,10 @@ const BOARD_CHAT_SYSTEM = [
   '5. Structure it for readability rather than one dense paragraph: when an answer has a few distinct parts (status, blockers, next step), put each on its own line starting with "- ", the way you would jot a quick list. Never number them, never restate the CONTEXT field-by-field or mirror its bracket/label shape.',
   '6. Quote an exact phrase only when the specific wording matters; otherwise say it in your own words.',
   '7. When asked what needs attention, prefer overdue and soon-due cards first. Use the TODAY value at the top of the CONTEXT to reason about "today", "this week", overdue, and how long something has been sitting.',
-  '8. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 5, is the only structure allowed.'
+  '8. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 5, is the only structure allowed.',
+  '9. Several cards can belong to similar-sounding people (a shared last name, a couple filed as two separate cards, one name that is a substring of another). Before answering about "X", check the CONTEXT for every card whose name is close to X — if more than one plausibly matches, ask which one he means rather than picking one silently; if only one truly matches, answer about that one specifically and do not blend in details from a different, similarly-named card.',
+  '10. For a broad question ("what needs attention", "what is outstanding", "what is not done yet"), do not restate the whole board back to him as a nested board-by-column breakdown. Name individual cards only where naming them is the actual point — the few he can act on right now, or the ones actually blocking something — otherwise summarize a group by its count. A bullet list where most lines are just a count of cards in some column, repeated for every board and every column, is not an answer — it is the CONTEXT read back at him.',
+  '11. Every forecast task on the Action Items board is Dwight’s to do. If a card’s forecast is outstanding or comes up, say it is on Dwight rather than treating the owner as unclear or unknown.'
 ].join('\n');
 
 function buildBoardChatContext(cards, boardLabels) {
@@ -296,18 +299,28 @@ export default {
       if (!id) return json({ ok: false, error: 'That name has no letters or numbers to build a board id from.' }, 400);
       if (BOARDS.includes(id)) return json({ ok: false, error: 'That name collides with a built-in board.' }, 400);
 
-      const list = await loadCustomBoards(env, code);
-      const existing = list.find((b) => b.id === id);
-      if (existing) {
-        existing.label = name;
-      } else {
-        if (list.length >= MAX_CUSTOM_BOARDS) {
-          return json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' }, 400);
+      /* This route was throwing an uncaught exception in production —
+         surfacing as Cloudflare's own generic "Worker threw exception"
+         error page, with the real cause invisible to both the caller (a
+         Google Apps Script trigger, in practice) and to us. Wrapped like
+         every other KV-touching route below so a failure at least comes
+         back as a readable error instead of a blank crash page. */
+      try {
+        const list = await loadCustomBoards(env, code);
+        const existing = list.find((b) => b.id === id);
+        if (existing) {
+          existing.label = name;
+        } else {
+          if (list.length >= MAX_CUSTOM_BOARDS) {
+            return json({ ok: false, error: 'Already at the limit of ' + MAX_CUSTOM_BOARDS + ' custom boards for this code.' }, 400);
+          }
+          list.push({ id: id, label: name, addedAt: Date.now() });
         }
-        list.push({ id: id, label: name, addedAt: Date.now() });
+        await saveCustomBoards(env, code, list);
+        return json({ ok: true, board: { id: id, label: name } });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e) }, 500);
       }
-      await saveCustomBoards(env, code, list);
-      return json({ ok: true, board: { id: id, label: name } });
     }
 
     /* Read-only mirror of the extension's fetchCardWhole() (common.js) —
