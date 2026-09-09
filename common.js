@@ -3823,6 +3823,30 @@ var QA = (function () {
     return ctx;
   }
 
+  /* "Ask about this card" is a single-card question, not a whole-board one —
+     running it through buildBoardChatContext meant it shared that budget
+     with all the other cards on the board, and a comment thread with real
+     substance (several paragraphs, an "Action items — X:" breakdown) got
+     cut to its first 300 characters same as everything else, or crowded
+     out entirely if enough other cards' comments spent the budget first.
+     A real card's own content is never anywhere near this size, so there's
+     no budget to share here — just send all of it. */
+  function buildSingleCardContext(card) {
+    const name = card.context || card.title || 'Untitled';
+    const out = ['CARD: ' + name];
+    if (card.due) out.push('DUE: ' + card.due);
+    const note = tidyCommentText(card.body || '').trim();
+    if (note) out.push('NOTE: ' + note);
+    if (Array.isArray(card.comments) && card.comments.length) {
+      card.comments.slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); })
+        .forEach(function (cm) {
+          const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
+          if (text) out.push('COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text);
+        });
+    }
+    return out.join('\n');
+  }
+
   /* history: [{role:'user'|'model', content}]. Gemini calls the assistant
      turn "model", not "assistant" — kept as-is here rather than normalized,
      since the mobile-push server's /api/ask builds the same shape and both
@@ -5056,7 +5080,7 @@ var QA = (function () {
     UI_RANGES, GROUPS, groupFor, inGroup,
     AI_MODELS, AI_SYSTEM, getAI, setAI, buildContext, askClaude, aiErrorMessage,
     getDailyUpdate, setDailyUpdate, buildDailyUpdateContext, draftDailyUpdate,
-    BOARD_CHAT_SYSTEM, buildBoardChatContext, askGeminiAboutBoard,
+    BOARD_CHAT_SYSTEM, buildBoardChatContext, buildSingleCardContext, askGeminiAboutBoard,
     getPush, setPush, pushToPhone, getTheme, setTheme,
     BOARD_COLUMNS, ACTION_ITEMS_COLUMNS, columnsForBoard, BOARDS, fetchCards, createCard, fileCard, moveCard, updateCard, deleteCard,
     markCardHandled, syncBoardAfterReply, checkSlack, testSlackNow, ME,
