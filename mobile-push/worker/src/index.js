@@ -9,7 +9,7 @@ const CODE_LENGTH = 8;
    falls back to Doing for any card whose column doesn't exist on its own
    current board, so this list stays a flat, board-agnostic allow-list
    rather than needing to know which board a card is on to validate it. */
-const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
+const COLUMNS = ['inbox', 'doing', 'waiting', 'waitingteam', 'waitingdwight', 'done'];
 const BOARDS = ['main', 'qtm', 'taxplan', 'actionitems'];
 const boardKey = (code) => 'board:' + code;
 const customBoardsKey = (code) => 'customboards:' + code;
@@ -38,7 +38,7 @@ function sanitizeComments(raw) {
    no Gemini key of its own to hold — mirrors server.js's copy of this,
    kept in sync by hand since Worker and Node don't share a module. */
 const BOARD_LABELS = { main: 'Main', qtm: 'QTM', taxplan: 'Tax Plan Draft', actionitems: 'Action Items' };
-const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', done: 'Done' };
+const COLUMN_LABELS = { inbox: 'Inbox', doing: 'Doing', waiting: 'Awaiting client', waitingteam: 'Awaiting team', waitingdwight: 'Waiting for Dwight', done: 'Done' };
 const ACTION_ITEMS_COLUMN_IDS = ['inbox', 'doing', 'waiting', 'waitingteam', 'done'];
 const DEFAULT_COLUMN_IDS = ['inbox', 'doing', 'done'];
 /* Sending every synced comment thread in full, for every card, is what
@@ -60,14 +60,15 @@ const BOARD_CHAT_SYSTEM = [
   'Rules:',
   '1. Answer ONLY from the CONTEXT. Never invent a card, client, date, or comment.',
   '2. If the answer is not in the CONTEXT, say so plainly rather than guessing.',
-  '3. Answer the way you would explain it to him out loud, and cover it properly: current status, who is waiting on what, what is blocking it, and what happens next — not just a one-line mention that leaves him needing to ask a follow-up for the part that actually matters.',
-  '4. Structure it for readability rather than one dense paragraph: when an answer has a few distinct parts (status, blockers, next step), put each on its own line starting with "- ", the way you would jot a quick list. Never number them, never restate the CONTEXT field-by-field or mirror its bracket/label shape.',
-  '5. Quote an exact phrase only when the specific wording matters; otherwise say it in your own words.',
-  '6. When asked what needs attention, prefer overdue and soon-due cards first.',
-  '7. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 4, is the only structure allowed.',
-  '8. Several cards can belong to similar-sounding people (a shared last name, a couple filed as two separate cards, one name that is a substring of another). Before answering about "X", check the CONTEXT for every card whose name is close to X — if more than one plausibly matches, ask which one he means rather than picking one silently; if only one truly matches, answer about that one specifically and do not blend in details from a different, similarly-named card.',
-  '9. For a broad question ("what needs attention", "what is outstanding", "what is not done yet"), do not restate the whole board back to him as a nested board-by-column breakdown. Name individual cards only where naming them is the actual point — the few he can act on right now, or the ones actually blocking something — otherwise summarize a group by its count. A bullet list where most lines are just a count of cards in some column, repeated for every board and every column, is not an answer — it is the CONTEXT read back at him.',
-  '10. Every forecast task on the Action Items board is Dwight’s to do. If a card’s forecast is outstanding or comes up, say it is on Dwight rather than treating the owner as unclear or unknown.'
+  '3. Match the answer to the question. A direct lookup — "is X on the board?", "when is Y due?", "how many cards are overdue?" — gets a direct, short answer, no padding. An open question about where a card or the board stands gets the fuller picture: current status, who is waiting on what, what is blocking it, and what happens next, so he is not left needing a follow-up for the part that actually matters. Never inflate a simple question, and never flatten a real "where does this stand" into one shallow line.',
+  '4. A card\'s comment thread is in time order, oldest to newest. When comments disagree or the situation moved on, the most recent comment is the current truth — answer with what is true now, and bring up an earlier state only when the change itself is the point (e.g. "the client promised it on the 28th but has since gone quiet").',
+  '5. Structure it for readability rather than one dense paragraph: when an answer has a few distinct parts (status, blockers, next step), put each on its own line starting with "- ", the way you would jot a quick list. Never number them, never restate the CONTEXT field-by-field or mirror its bracket/label shape.',
+  '6. Quote an exact phrase only when the specific wording matters; otherwise say it in your own words.',
+  '7. When asked what needs attention, prefer overdue and soon-due cards first. Use the TODAY value at the top of the CONTEXT to reason about "today", "this week", overdue, and how long something has been sitting.',
+  '8. Never use markdown — no **bold**, no asterisks for emphasis, no # headers. A leading "- " for a list line, as in rule 5, is the only structure allowed.',
+  '9. Several cards can belong to similar-sounding people (a shared last name, a couple filed as two separate cards, one name that is a substring of another). Before answering about "X", check the CONTEXT for every card whose name is close to X — if more than one plausibly matches, ask which one he means rather than picking one silently; if only one truly matches, answer about that one specifically and do not blend in details from a different, similarly-named card.',
+  '10. For a broad question ("what needs attention", "what is outstanding", "what is not done yet"), do not restate the whole board back to him as a nested board-by-column breakdown. Name individual cards only where naming them is the actual point — the few he can act on right now, or the ones actually blocking something — otherwise summarize a group by its count. A bullet list where most lines are just a count of cards in some column, repeated for every board and every column, is not an answer — it is the CONTEXT read back at him.',
+  '11. Every forecast task on the Action Items board is Dwight’s to do. If a card’s forecast is outstanding or comes up, say it is on Dwight rather than treating the owner as unclear or unknown.'
 ].join('\n');
 
 function buildBoardChatContext(cards, boardLabels) {
@@ -402,16 +403,12 @@ export default {
             body: JSON.stringify({
               system_instruction: { parts: [{ text: BOARD_CHAT_SYSTEM }] },
               contents: contents,
-              /* Flash's default "thinking" tokens count against
-                 maxOutputTokens — without turning that off, the model can
-                 spend most or all of the budget reasoning silently and get
-                 cut off mid-sentence before finishing the actual answer.
-                 thinkingBudget: 0 stops that; this is a grounded lookup,
-                 not a task that benefits from chain-of-thought. Budget
-                 itself raised too, since a real answer covering several
-                 cards runs longer than 800 tokens allowed for even with
-                 thinking off. */
-              generationConfig: { temperature: 0.2, maxOutputTokens: 2000, thinkingConfig: { thinkingBudget: 0 } }
+              /* Mirrors the extension's askGeminiAboutBoard: a bounded
+                 thinking budget (not the old thinkingBudget: 0) so answers
+                 reason across cards instead of coming back shallow, with
+                 enough output headroom that a multi-card answer never gets
+                 cut off mid-sentence — the failure the old small cap hit. */
+              generationConfig: { temperature: 0.3, maxOutputTokens: 3000, thinkingConfig: { thinkingBudget: 1024 } }
             })
           }
         );

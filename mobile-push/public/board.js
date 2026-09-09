@@ -21,8 +21,19 @@ const ACTION_ITEMS_COLUMNS = [
   { id: 'waitingteam', label: 'Awaiting team' },
   { id: 'done', label: 'Done' }
 ];
+/* The custom "Client Comms" board (slug id 'clientcomms') gets its own
+   "Waiting for Dwight" column between Doing and Done — mirrors the
+   extension's columnsForBoard in common.js so the phone board matches. */
+const CLIENT_COMMS_COLUMNS = [
+  { id: 'inbox', label: 'Inbox' },
+  { id: 'doing', label: 'Doing' },
+  { id: 'waitingdwight', label: 'Waiting for Dwight' },
+  { id: 'done', label: 'Done' }
+];
 function columnsForBoard(boardId) {
-  return boardId === 'actionitems' ? ACTION_ITEMS_COLUMNS : COLUMNS;
+  if (boardId === 'actionitems') return ACTION_ITEMS_COLUMNS;
+  if (boardId === 'clientcomms') return CLIENT_COMMS_COLUMNS;
+  return COLUMNS;
 }
 
 /* Boards sharing the same three columns above — Main for one-off client

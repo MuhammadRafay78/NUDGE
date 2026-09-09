@@ -1,4 +1,9 @@
 :root {
+  /* Tells the browser to render its own UI — scrollbars, form-control
+     widgets, the <select> dropdown, date/time pickers, text selection,
+     autofill — in the matching light chrome. The dark blocks below flip
+     it, so native bits stop looking pasted-on-light in dark mode. */
+  color-scheme: light;
   --bg: #ffffff;
   --card: #f0f0f2;
   --fg: #18181b;
@@ -8,6 +13,12 @@
   --accent: #c2410c;
   --accent-soft: #fff7ed;
   --chip: #e8e8eb;
+  --ok: #16a34a;
+  /* Status-badge text tones. The badges sit on a faint color-mix tint of
+     the same hue, so the text has to be a darker, saturated shade to read
+     on white; dark mode (below) keeps the light pastels that pop on its
+     dark ground. */
+  --tone-red: #dc2626; --tone-amber: #b45309; --tone-blue: #0369a1; --tone-green: #16a34a;
   /* --bg is the same white as the page itself, so a surface using it
      (the board's own individual cards) needs a shadow to read as raised
      rather than just blending in — dark mode doesn't need this since its
@@ -19,8 +30,13 @@
    what lets that override win over the OS setting. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
     --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
+    /* #16a34a is legible on white but muddy and low-contrast on the dark
+       ground — a brighter green reads as "success" without straining. */
+    --ok: #4ade80;
+    --tone-red: #f87171; --tone-amber: #fbbf24; --tone-blue: #4aa3d8; --tone-green: #6ee7b7;
     --card-shadow: none;
   }
 }
@@ -28,8 +44,11 @@
    light. Same values as the media-query block above, kept in sync by
    hand since a CSS custom-media isn't available here. */
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #18181b; --card: #202024; --fg: #f4f4f5; --muted: #a1a1aa; --faint: #7c7c85;
   --line: #2f2f35; --accent: #fb923c; --accent-soft: #2a1a0f; --chip: #27272a;
+  --ok: #4ade80;
+  --tone-red: #f87171; --tone-amber: #fbbf24; --tone-blue: #4aa3d8; --tone-green: #6ee7b7;
   --card-shadow: none;
 }
 * { box-sizing: border-box; }
@@ -102,7 +121,10 @@ html { overflow-x: hidden; }
 .chip:hover { border-color: var(--muted); color: var(--fg); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
 .chip small { opacity: .75; margin-left: 5px; }
-.chip.date-pick { color-scheme: light dark; color: var(--fg); width: 124px; }
+/* Inherit the root's resolved color-scheme so the native date picker
+   matches the chosen theme, not the OS — otherwise forcing dark on a
+   light-OS machine (or the reverse) leaves this one control mismatched. */
+.chip.date-pick { color-scheme: inherit; color: var(--fg); width: 124px; }
 .chip.date-pick.on { color: #fff; }
 
 /* ---- the one card ---- */
@@ -181,7 +203,7 @@ button.emo:active { transform: none; }
 button.emo.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
 button.emo:disabled { opacity: .5; cursor: default; }
 .rnote { font-size: 12px; color: var(--muted); margin-left: 4px; }
-.rnote.ok { color: #16a34a; font-weight: 600; }
+.rnote.ok { color: var(--ok); font-weight: 600; }
 .rnote.bad { color: var(--accent); }
 
 .acts { display: flex; gap: 7px; margin-top: 14px; }
@@ -290,8 +312,8 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   padding: 2px 5px; border-radius: 3px; text-transform: uppercase;
   background: var(--line); color: var(--muted); flex: 0 0 auto;
 }
-.src.trello { background: color-mix(in srgb, #0079bf 22%, transparent); color: #4aa3d8; }
-.src.canopy { background: color-mix(in srgb, #f59e0b 22%, transparent); color: #f59e0b; }
+.src.trello { background: color-mix(in srgb, #0079bf 22%, transparent); color: var(--tone-blue); }
+.src.canopy { background: color-mix(in srgb, #f59e0b 22%, transparent); color: var(--tone-amber); }
 
 /* ---- a list that starts folded ---- */
 .fold { border: none; background: none; padding: 0; cursor: pointer; font: inherit;
@@ -307,8 +329,8 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
   padding: 2px 6px; border-radius: 3px; flex: 0 0 auto;
 }
-.bucket.needs { background: color-mix(in srgb, #ef4444 20%, transparent); color: #f87171; }
-.bucket.waiting { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.bucket.needs { background: color-mix(in srgb, #ef4444 20%, transparent); color: var(--tone-red); }
+.bucket.waiting { background: color-mix(in srgb, #f59e0b 20%, transparent); color: var(--tone-amber); }
 .bucket.fyi { background: var(--line); color: var(--muted); }
 .bucket-why { font-size: 11px; color: var(--muted); margin-top: 6px; font-style: italic; }
 .bucket-head {
@@ -322,11 +344,11 @@ button.btn.attach-btn { padding: 8px 11px; font-size: 15px; line-height: 1; }
   padding: 2px 6px; border-radius: 3px; margin-left: 6px; flex: 0 0 auto;
   white-space: nowrap;
 }
-.due.overdue { background: color-mix(in srgb, #ef4444 24%, transparent); color: #fca5a5; }
-.due.today   { background: color-mix(in srgb, #ef4444 18%, transparent); color: #f87171; }
-.due.soon    { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #fbbf24; }
+.due.overdue { background: color-mix(in srgb, #ef4444 24%, transparent); color: var(--tone-red); }
+.due.today   { background: color-mix(in srgb, #ef4444 18%, transparent); color: var(--tone-red); }
+.due.soon    { background: color-mix(in srgb, #f59e0b 20%, transparent); color: var(--tone-amber); }
 .due.later   { background: var(--line); color: var(--muted); }
-.due.done    { background: color-mix(in srgb, #059669 18%, transparent); color: #6ee7b7; }
+.due.done    { background: color-mix(in srgb, #059669 18%, transparent); color: var(--tone-green); }
 .place { flex-wrap: wrap; }
 
 /* ---- the document ledger ---- */

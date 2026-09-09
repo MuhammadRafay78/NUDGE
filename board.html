@@ -195,7 +195,7 @@
     #updateText { width: 100%; font: inherit; font-size: 13.5px; line-height: 1.5; padding: 10px 12px;
       border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
       resize: vertical; min-height: 90px; }
-    .meta.ok { color: #16a34a; font-weight: 600; }
+    .meta.ok { color: var(--ok); font-weight: 600; }
     .meta.bad { color: var(--accent); }
     /* Same chat-bubble language as the "Open card" comment thread — a
        question/answer pair reads the same way a tagged comment does.
@@ -231,7 +231,7 @@
     .chat-input-row { display: flex; gap: 10px; align-items: flex-end; }
     .chat-input-row textarea { flex: 1; font: inherit; font-size: 14.5px; padding: 11px 14px;
       border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-      resize: vertical; min-height: 50px; }
+      resize: none; min-height: 0; height: 44px; }
     /* Without this the browser's own default focus ring shows instead — a
        plain white/gray rectangle that clashes hard against a dark, orange-
        accented panel. */
@@ -258,31 +258,29 @@
       box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
-    /* Anchored by bottom:96px — a height picked without accounting for
-       that (92vh alone, say) can push the panel's own top, and the
-       resize handle with it, above the visible viewport on anything
-       shorter than a tall desktop screen. calc() against the bottom
-       offset instead keeps a fixed 32px clear at the top no matter the
-       viewport height — used for the default open size below and for
-       .maximized both, so opening the panel already gives the same
-       generously-sized box shown while asking something, rather than
-       shrinking down to fit an empty/short message list first. */
+    /* A comfortably-sized default — Maximize and the top-left resize grip
+       take it larger. Anchored by right/bottom; the height is capped to the
+       space above the 96px bottom offset (keeping 32px clear at the top) so
+       neither the panel nor its resize grip runs off a short viewport. */
     #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 60;
-      width: 900px; max-width: calc(100vw - 32px); height: calc(100vh - 96px - 32px);
+      width: 620px; max-width: calc(100vw - 32px);
+      height: min(600px, calc(100vh - 96px - 32px));
       padding: 18px 20px; display: flex; flex-direction: column;
       box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
     #chatPanel.floating .update-head b { font-size: 16px; }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
-    /* Anchored by right/bottom, so growing width/height already expands
-       the panel toward the top-left on its own — maximizing or dragging
-       the resize handle just needs to change the size, not reposition
-       anything. Goes a step further than the already-large default above,
-       for anyone who wants the whole screen for a long back-and-forth. */
+    /* A divider line under the chat header, and the title itself doubles as
+       a minimize control (alongside the × and the launcher button). */
+    #chatPanel .update-head { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+    #chatHeaderTitle { cursor: pointer; }
+    #chatHeaderTitle:hover { color: var(--accent); }
+    /* Maximize goes a step past the default width for a long back-and-forth;
+       height stays governed by the default rule above. Anchored by
+       right/bottom, so this only changes the size, never the position. */
     #chatPanel.floating.maximized { width: min(1300px, calc(100vw - 32px)); }
-    /* No native corner to grab for this — CSS resize only ever offers the
-       bottom-right corner, and this panel's fixed corner is the opposite
-       one. A small custom handle up here, dragged in board.js, is the only
-       way to resize from top-left. */
+    /* No native corner to grab — CSS resize only offers the bottom-right
+       corner, and this panel's fixed corner is the opposite one. A small
+       custom handle up here, dragged in board.js, resizes from top-left. */
     .chat-resize { position: absolute; top: 0; left: 0; width: 18px; height: 18px;
       cursor: nwse-resize; z-index: 2; }
     .chat-resize::before { content: ''; position: absolute; top: 5px; left: 5px; width: 8px; height: 8px;
@@ -290,7 +288,7 @@
     .chat-resize:hover::before { border-color: var(--accent); }
     @media (max-width: 520px) {
       .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
-      #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; max-width: none; max-height: 76vh; }
+      #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; height: auto; max-width: none; max-height: 76vh; }
       #chatPanel.floating.maximized { width: auto; height: calc(100vh - 74px - 24px); }
       .chat-resize { display: none; }
     }
@@ -325,7 +323,7 @@
   <div class="update-panel floating" id="chatPanel" hidden>
     <span class="chat-resize" id="chatResize" title="Drag to resize"></span>
     <div class="update-head">
-      <b>Ask the board</b>
+      <b id="chatHeaderTitle" title="Click to minimize">Ask the board</b>
       <span class="meta" id="chatStatus"></span>
       <span class="spacer" style="flex:1"></span>
       <button class="btn" id="chatMaximize" title="Maximize">&#10530;</button>
@@ -334,7 +332,7 @@
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input-row">
-      <textarea id="chatInput" rows="1" placeholder="Ask something about the cards on this board — due dates, who's waiting on what, what's overdue… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <textarea id="chatInput" rows="1" placeholder=""></textarea>
       <button class="btn go" id="chatSend" title="Ask" aria-label="Ask">&#10148;</button>
     </div>
   </div>
