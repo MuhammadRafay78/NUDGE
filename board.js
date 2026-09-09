@@ -1188,6 +1188,10 @@ function openChat(prefill) {
 
 chatBtn.addEventListener('click', () => {
   if (!chatPanel.hidden) { chatPanel.hidden = true; return; }
+  /* "Ask about this card" already closes an open card modal before
+     opening chat — the FAB skipped that, so opening chat straight from
+     the FAB while a card was open left two dialogs stacked at once. */
+  closeModal();
   openChat();
 });
 chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
