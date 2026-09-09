@@ -408,7 +408,11 @@ function modalHtml(card) {
   const trelloLink = card.url
     ? '<a class="open" href="' + esc(card.url) + '" target="_blank" rel="noreferrer">Reply on Trello &#8599;</a>'
     : '';
-  const askCard = '<button type="button" class="ask-card" data-title="' + esc(card.title || heading) + '">&#128172; Ask about this card</button>';
+  /* heading is the actual client/card name (context, or title if there's
+     no context) — card.title alone is often just the generic "X tagged
+     you" notification line, which made the auto-sent question read as
+     "On 'Paul Eleazar tagged you'" instead of naming the real card. */
+  const askCard = '<button type="button" class="ask-card" data-title="' + esc(heading || card.title) + '">&#128172; Ask about this card</button>';
 
   let body;
   if (!card.cardId) {
@@ -506,7 +510,7 @@ modalEl.addEventListener('click', (e) => {
   if (e.target.classList.contains('ask-card')) {
     const title = e.target.dataset.title || '';
     closeModal();
-    openChat(title ? 'About "' + title + '": ' : '');
+    askAboutCard(title);
     return;
   }
   if (e.target === modalEl || e.target.classList.contains('modal-close')) closeModal();
@@ -562,6 +566,15 @@ function openChat(prefill) {
   chatInput.focus();
   const len = chatInput.value.length;
   chatInput.setSelectionRange(len, len);
+}
+
+/* "Ask about this card" only ever means one thing, so it asks it outright
+   instead of just pre-filling the question and making him tap Ask again
+   for what's really a one-tap action. */
+function askAboutCard(title) {
+  const question = (title ? 'On "' + title + '" — ' : '') + 'What are the duties assigned to Rafay regarding this card?';
+  openChat(question);
+  sendChat();
 }
 
 chatBtn.addEventListener('click', () => openChat());
