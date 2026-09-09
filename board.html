@@ -237,22 +237,38 @@
        accented panel. */
     .chat-input-row textarea:focus { outline: none; border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-soft); }
-    .chat-input-row .btn.go { padding: 11px 20px; font-size: 14px; }
+    .chat-input-row .btn.go { padding: 0; width: 46px; height: 46px; flex: 0 0 auto;
+      font-size: 19px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
 
     /* A round, always-in-the-corner trigger instead of a toolbar button —
        stays reachable with one thumb no matter how far the page has
        scrolled, on a phone-width viewport especially. The panel it opens
        floats just above it rather than pushing into the page's normal
        flow, like any chat-widget popup. */
-    .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 40;
+    /* Above .modal-backdrop's z-index:50 — the FAB and panel used to sit
+       below it, so opening chat while a card's "Open card" modal was
+       already up rendered the panel behind that modal's dark overlay:
+       invisible and, since the backdrop intercepts every click across the
+       full viewport, completely unreachable until the card modal was
+       closed by hand. */
+    .chat-fab { position: fixed; right: 22px; bottom: 22px; z-index: 60;
       width: 60px; height: 60px; border-radius: 50%; border: none;
       background: var(--accent); color: #fff; font-size: 26px; line-height: 1;
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 4px 16px rgba(0, 0, 0, .3); cursor: pointer; }
     .chat-fab:hover { filter: brightness(1.06); }
     .chat-fab:active { transform: scale(.95); }
-    #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 40;
-      width: 620px; max-width: calc(100vw - 32px); max-height: 82vh;
+    /* Anchored by bottom:96px — a height picked without accounting for
+       that (92vh alone, say) can push the panel's own top, and the
+       resize handle with it, above the visible viewport on anything
+       shorter than a tall desktop screen. calc() against the bottom
+       offset instead keeps a fixed 32px clear at the top no matter the
+       viewport height — used for the default open size below and for
+       .maximized both, so opening the panel already gives the same
+       generously-sized box shown while asking something, rather than
+       shrinking down to fit an empty/short message list first. */
+    #chatPanel.floating { position: fixed; right: 24px; bottom: 96px; z-index: 60;
+      width: 900px; max-width: calc(100vw - 32px); height: calc(100vh - 96px - 32px);
       padding: 18px 20px; display: flex; flex-direction: column;
       box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
     #chatPanel.floating .update-head b { font-size: 16px; }
@@ -260,14 +276,9 @@
     /* Anchored by right/bottom, so growing width/height already expands
        the panel toward the top-left on its own — maximizing or dragging
        the resize handle just needs to change the size, not reposition
-       anything. */
-    /* Anchored by bottom:96px — a height picked without accounting for
-       that (92vh alone, say) can push the panel's own top, and the
-       resize handle with it, above the visible viewport on anything
-       shorter than a tall desktop screen. calc() against the bottom
-       offset instead keeps a fixed 32px clear at the top no matter the
-       viewport height. */
-    #chatPanel.floating.maximized { width: min(1100px, calc(100vw - 32px)); height: calc(100vh - 96px - 32px); max-height: none; }
+       anything. Goes a step further than the already-large default above,
+       for anyone who wants the whole screen for a long back-and-forth. */
+    #chatPanel.floating.maximized { width: min(1300px, calc(100vw - 32px)); }
     /* No native corner to grab for this — CSS resize only ever offers the
        bottom-right corner, and this panel's fixed corner is the opposite
        one. A small custom handle up here, dragged in board.js, is the only
@@ -323,8 +334,8 @@
     </div>
     <div class="chat-messages" id="chatMessages"></div>
     <div class="chat-input-row">
-      <textarea id="chatInput" rows="2" placeholder="Ask something about the cards on this board — due dates, who's waiting on what, what's overdue… (Enter to send, Shift+Enter for a new line)"></textarea>
-      <button class="btn go" id="chatSend">Ask</button>
+      <textarea id="chatInput" rows="1" placeholder="Ask something about the cards on this board — due dates, who's waiting on what, what's overdue… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button class="btn go" id="chatSend" title="Ask" aria-label="Ask">&#10148;</button>
     </div>
   </div>
 
