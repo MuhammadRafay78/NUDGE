@@ -509,8 +509,7 @@ function closeModal() {
 modalEl.addEventListener('click', (e) => {
   if (e.target.classList.contains('ask-card')) {
     const title = e.target.dataset.title || '';
-    closeModal();
-    askAboutCard(title);
+    askAboutCard(modalCardId, title);
     return;
   }
   if (e.target === modalEl || e.target.classList.contains('modal-close')) closeModal();
@@ -570,11 +569,20 @@ function openChat(prefill) {
 
 /* "Ask about this card" only ever means one thing, so it asks it outright
    instead of just pre-filling the question and making him tap Ask again
-   for what's really a one-tap action. */
-function askAboutCard(title) {
-  const question = (title ? 'On "' + title + '" — ' : '') + 'What are the duties assigned to Rafay regarding this card?';
-  openChat(question);
-  sendChat();
+   for what's really a one-tap action. Passes cardId through to /api/ask so
+   the server grounds the answer in just this card's own full content
+   (see buildSingleCardContext) instead of the whole board's — that one
+   shares a single budget across every card, so a comment with real
+   substance (several paragraphs, an "Action items — X:" breakdown) got
+   cut to 300 characters same as everything else. The card itself stays
+   open — the chat modal sits above it, so the answer shows up without
+   losing the card being looked at. */
+function askAboutCard(cardId, title) {
+  const question = (title ? 'On "' + title + '" — ' : '') +
+    'What are the duties assigned to Rafay regarding this card, other than forecasting (that’s Dwight’s job)? Please explain anything complicated in simple, plain words.';
+  chatModal.hidden = false;
+  renderChatMessages();
+  sendChat(question, cardId);
 }
 
 chatBtn.addEventListener('click', () => openChat());
@@ -588,8 +596,11 @@ chatClear.addEventListener('click', () => {
   renderChatMessages();
 });
 
-async function sendChat() {
-  const q = chatInput.value.trim();
+/* question/cardId are set by askAboutCard for a one-card question — typed
+   questions from the input box call this with no arguments, same as
+   before. */
+async function sendChat(question, cardId) {
+  const q = typeof question === 'string' ? question : chatInput.value.trim();
   if (!q) return;
   const priorHistory = chatHistory.slice();
   chatHistory.push({ role: 'user', content: q });
@@ -598,10 +609,12 @@ async function sendChat() {
   chatSend.disabled = true;
   chatStatus.textContent = 'Thinking…';
   try {
+    const body = { code: code, question: q, history: priorHistory };
+    if (cardId) body.cardId = cardId;
     const data = await api('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: code, question: q, history: priorHistory })
+      body: JSON.stringify(body)
     });
     chatHistory.push({ role: 'model', content: data.answer || '(no answer)' });
     chatStatus.textContent = '';
@@ -612,7 +625,7 @@ async function sendChat() {
   chatSend.disabled = false;
   renderChatMessages();
 }
-chatSend.addEventListener('click', sendChat);
+chatSend.addEventListener('click', () => sendChat());
 chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();

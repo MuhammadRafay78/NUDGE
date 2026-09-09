@@ -106,6 +106,28 @@ function buildBoardChatContext(cards, boardLabels) {
   return ctx;
 }
 
+/* "Ask about this card" is a single-card question, not a whole-board one —
+   running it through buildBoardChatContext meant it shared that budget
+   with every other card on the board, so a comment with real substance
+   (several paragraphs, an "Action items — X:" breakdown) got cut to 300
+   characters same as everything else, or crowded out entirely if enough
+   other cards' comments spent the budget first. A single card is never
+   anywhere near that size, so there's no budget to share here. */
+function buildSingleCardContext(card) {
+  const name = card.context || card.title || 'Untitled';
+  const out = ['CARD: ' + name];
+  if (card.due) out.push('DUE: ' + card.due);
+  const note = String(card.body || '').replace(/\s+/g, ' ').trim();
+  if (note) out.push('NOTE: ' + note);
+  if (Array.isArray(card.comments) && card.comments.length) {
+    card.comments.slice().sort((a, b) => (b.at || 0) - (a.at || 0)).forEach((cm) => {
+      const text = String(cm.text || '').replace(/\s+/g, ' ').trim();
+      if (text) out.push('COMMENT (' + (cm.byName || cm.by || 'someone') + '): ' + text);
+    });
+  }
+  return out.join('\n');
+}
+
 function geminiErrorMessage(status, detail) {
   if (status === 400 && /API key not valid/i.test(detail || '')) return 'That Gemini key was not accepted.';
   if (status === 401 || status === 403) return 'That Gemini key was not accepted.';
@@ -380,10 +402,18 @@ export default {
       const question = String(payload.question || '').trim();
       if (!question) return json({ ok: false, error: 'Missing question.' }, 400);
       const history = Array.isArray(payload.history) ? payload.history : [];
+      const cardId = String(payload.cardId || '');
 
-      const boardLabels = Object.assign({}, BOARD_LABELS);
-      (await loadCustomBoards(env, code)).forEach((b) => { boardLabels[b.id] = b.label; });
-      const context = buildBoardChatContext(await loadBoard(env, code), boardLabels);
+      const board = await loadBoard(env, code);
+      const focusCard = cardId ? board.find((c) => c.id === cardId) : null;
+      let context;
+      if (focusCard) {
+        context = buildSingleCardContext(focusCard);
+      } else {
+        const boardLabels = Object.assign({}, BOARD_LABELS);
+        (await loadCustomBoards(env, code)).forEach((b) => { boardLabels[b.id] = b.label; });
+        context = buildBoardChatContext(board, boardLabels);
+      }
       const contents = [];
       history.slice(-6).forEach((h) => {
         if (h && h.content) contents.push({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: String(h.content) }] });

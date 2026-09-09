@@ -855,10 +855,11 @@ modalEl.addEventListener('click', async (e) => {
        immediately instead; the question itself is fixed since this button
        only ever means one thing. (BOARD_CHAT_SYSTEM's rule 10 already
        covers forecasts being Dwight's, not Rafay's, so that doesn't need
-       repeating here.) */
+       repeating here.) The card itself stays open — the chat panel floats
+       above it (see #chatPanel's z-index), so the answer shows up without
+       losing the card you were just looking at. */
     const title = e.target.dataset.title || '';
-    closeModal();
-    askAboutCard(title);
+    askAboutCard(modalCardId, title);
     return;
   }
 
@@ -1221,11 +1222,22 @@ function openChat(prefill) {
 
 /* "Ask about this card" only ever means one thing, so it asks it
    outright instead of just pre-filling the question and making him click
-   Ask again for what's really a one-click action. */
-function askAboutCard(title) {
-  const question = (title ? 'On "' + title + '" — ' : '') + 'What are the duties assigned to Rafay regarding this card?';
-  openChat(question);
-  sendChat();
+   Ask again for what's really a one-click action. Builds its own focused
+   context from just this one card rather than QA.buildBoardChatContext's
+   whole-board version — that one shares a single budget across every card
+   on the board, so a comment with real substance (several paragraphs, an
+   "Action items — X:" breakdown) got cut to 300 characters same as
+   everything else, or crowded out entirely if other cards' comments spent
+   the budget first. A single card is never anywhere near that size, so
+   there's no budget to share here. */
+function askAboutCard(cardId, title) {
+  const card = cardsById[cardId];
+  const question = (title ? 'On "' + title + '" — ' : '') +
+    'What are the duties assigned to Rafay regarding this card, other than forecasting (that’s Dwight’s job)? Please explain anything complicated in simple, plain words.';
+  chatPanel.hidden = false;
+  renderChat();
+  const context = card ? QA.buildSingleCardContext(card) : QA.buildBoardChatContext(Object.values(cardsById));
+  runChatQuestion(question, context);
 }
 
 chatBtn.addEventListener('click', () => {
@@ -1296,20 +1308,19 @@ chatClear.addEventListener('click', () => {
   renderChat();
 });
 
-async function sendChat() {
-  const q = chatInput.value.trim();
-  if (!q) return;
+/* Shared by sendChat (whole-board context) and askAboutCard (one card's
+   own, unshared context) — everything past "what context do we ground
+   this in" is identical either way. */
+async function runChatQuestion(question, context) {
   const priorHistory = chatHistory.slice();
-  chatHistory.push({ role: 'user', content: q });
-  chatInput.value = '';
+  chatHistory.push({ role: 'user', content: question });
   chatThinking = true;
   renderChat();
   chatSend.disabled = true;
   chatStatus.textContent = '';
   chatStatus.className = 'meta';
   try {
-    const context = QA.buildBoardChatContext(Object.values(cardsById));
-    const answer = await QA.askGeminiAboutBoard(q, context, priorHistory);
+    const answer = await QA.askGeminiAboutBoard(question, context, priorHistory);
     chatHistory.push({ role: 'model', content: answer });
   } catch (e) {
     chatHistory.pop();   // don't leave an unanswered question sitting in history
@@ -1319,6 +1330,13 @@ async function sendChat() {
   chatThinking = false;
   chatSend.disabled = false;
   renderChat();
+}
+
+async function sendChat() {
+  const q = chatInput.value.trim();
+  if (!q) return;
+  chatInput.value = '';
+  await runChatQuestion(q, QA.buildBoardChatContext(Object.values(cardsById)));
 }
 chatSend.addEventListener('click', sendChat);
 chatInput.addEventListener('keydown', (e) => {
