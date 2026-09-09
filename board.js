@@ -16,6 +16,8 @@ const chatSend = document.getElementById('chatSend');
 const chatClear = document.getElementById('chatClear');
 const chatClose = document.getElementById('chatClose');
 const chatStatus = document.getElementById('chatStatus');
+const chatMaximizeBtn = document.getElementById('chatMaximize');
+const chatResizeHandle = document.getElementById('chatResize');
 const modalEl = document.getElementById('cardModal');
 const modalBoxEl = document.getElementById('cardModalBox');
 const dailyUpdateBtn = document.getElementById('dailyUpdateBtn');
@@ -1189,6 +1191,58 @@ chatBtn.addEventListener('click', () => {
   openChat();
 });
 chatClose.addEventListener('click', () => { chatPanel.hidden = true; });
+
+/* ---------- chat panel: maximize + drag-resize from the top-left ----------
+   The panel is anchored by right/bottom (see #chatPanel.floating), so
+   growing its width/height already expands it toward the top-left on its
+   own — no repositioning needed, just a bigger box. Maximize is the quick
+   toggle; the handle is for dialing in an exact size by hand. Dragging
+   always wins over a maximized state, and picking Maximize always clears
+   whatever size dragging left behind. */
+let chatMaximized = false;
+
+function setChatMaximized(on) {
+  chatMaximized = on;
+  chatPanel.classList.toggle('maximized', on);
+  chatPanel.style.width = '';
+  chatPanel.style.height = '';
+  chatPanel.style.maxHeight = '';
+  chatMaximizeBtn.textContent = on ? '⤡' : '⤢';
+  chatMaximizeBtn.title = on ? 'Restore' : 'Maximize';
+}
+
+chatMaximizeBtn.addEventListener('click', () => setChatMaximized(!chatMaximized));
+
+chatResizeHandle.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (chatMaximized) setChatMaximized(false);
+  const startX = e.clientX;
+  const startY = e.clientY;
+  const rect = chatPanel.getBoundingClientRect();
+  const startWidth = rect.width;
+  const startHeight = rect.height;
+  /* Switch from the CSS max-height (content-driven, shrinks to fit) to an
+     explicit height the drag can actually control. */
+  chatPanel.style.width = startWidth + 'px';
+  chatPanel.style.height = startHeight + 'px';
+  chatPanel.style.maxHeight = 'none';
+
+  function onMove(ev) {
+    /* The handle sits at the top-left corner while right/bottom stay
+       fixed — so dragging it left/up (mouse X/Y decreasing) is what
+       should grow the panel, not shrink it. */
+    const nextWidth = startWidth + (startX - ev.clientX);
+    const nextHeight = startHeight + (startY - ev.clientY);
+    chatPanel.style.width = Math.min(Math.max(nextWidth, 360), window.innerWidth - 32) + 'px';
+    chatPanel.style.height = Math.min(Math.max(nextHeight, 280), window.innerHeight - 120) + 'px';
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
 chatClear.addEventListener('click', () => {
   chatHistory = [];
   chatStatus.textContent = '';

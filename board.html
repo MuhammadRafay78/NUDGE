@@ -257,9 +257,31 @@
       box-shadow: 0 14px 44px rgba(0, 0, 0, .4); }
     #chatPanel.floating .update-head b { font-size: 16px; }
     #chatPanel.floating .chat-messages { flex: 1 1 auto; max-height: none; }
+    /* Anchored by right/bottom, so growing width/height already expands
+       the panel toward the top-left on its own — maximizing or dragging
+       the resize handle just needs to change the size, not reposition
+       anything. */
+    /* Anchored by bottom:96px — a height picked without accounting for
+       that (92vh alone, say) can push the panel's own top, and the
+       resize handle with it, above the visible viewport on anything
+       shorter than a tall desktop screen. calc() against the bottom
+       offset instead keeps a fixed 32px clear at the top no matter the
+       viewport height. */
+    #chatPanel.floating.maximized { width: min(1100px, calc(100vw - 32px)); height: calc(100vh - 96px - 32px); max-height: none; }
+    /* No native corner to grab for this — CSS resize only ever offers the
+       bottom-right corner, and this panel's fixed corner is the opposite
+       one. A small custom handle up here, dragged in board.js, is the only
+       way to resize from top-left. */
+    .chat-resize { position: absolute; top: 0; left: 0; width: 18px; height: 18px;
+      cursor: nwse-resize; z-index: 2; }
+    .chat-resize::before { content: ''; position: absolute; top: 5px; left: 5px; width: 8px; height: 8px;
+      border-top: 2px solid var(--muted); border-left: 2px solid var(--muted); border-radius: 2px 0 0 0; }
+    .chat-resize:hover::before { border-color: var(--accent); }
     @media (max-width: 520px) {
       .chat-fab { right: 14px; bottom: 14px; width: 50px; height: 50px; font-size: 21px; }
       #chatPanel.floating { right: 10px; left: 10px; bottom: 74px; width: auto; max-width: none; max-height: 76vh; }
+      #chatPanel.floating.maximized { width: auto; height: calc(100vh - 74px - 24px); }
+      .chat-resize { display: none; }
     }
   </style>
 </head>
@@ -290,10 +312,12 @@
   </div>
 
   <div class="update-panel floating" id="chatPanel" hidden>
+    <span class="chat-resize" id="chatResize" title="Drag to resize"></span>
     <div class="update-head">
       <b>Ask the board</b>
       <span class="meta" id="chatStatus"></span>
       <span class="spacer" style="flex:1"></span>
+      <button class="btn" id="chatMaximize" title="Maximize">&#10530;</button>
       <button class="btn" id="chatClear">Clear</button>
       <button class="modal-close" id="chatClose" title="Dismiss" style="position:static">&times;</button>
     </div>
